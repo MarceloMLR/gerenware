@@ -25,11 +25,11 @@
 
 - [x] 5.1 A opção desabilitada no `SegmentedControl` (D7), com o teste do componente
 - [x] 5.2 "Formato" no `StatusReportDialog`, o motivo sem o PDF, os erros 409 e 502 e os textos em `pt-BR.json` (D7). Testes de tela dos cenários de "Gerar o relatório pela tela"
-- [ ] 5.3 Telas conferidas nos temas claro e escuro e no celular; `npm run lint`, `npm run typecheck` e `npm test` limpos
+- [x] 5.3 Telas conferidas nos temas claro e escuro e no celular; `npm run lint`, `npm run typecheck` e `npm test` limpos
 
 ## 6. Documentação e verificação
 
-- [ ] 6.1 Documentação e specs:
+- [x] 6.1 Documentação e specs:
   - `CLAUDE.md`, nas seções do mapa e da tela;
   - `docs/glossario.md`;
   - `openspec validate --all --strict` limpo.
