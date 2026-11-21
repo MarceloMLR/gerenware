@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { risksAfter, statusReportSchema, ticketOptions, valuesOf } from './statusReport';
+import {
+  failureKey,
+  pdfProblems,
+  risksAfter,
+  statusReportSchema,
+  ticketOptions,
+  valuesOf,
+} from './statusReport';
 
 const ticket = (number: number) => `#${String(number)}`;
 
@@ -13,7 +20,8 @@ const tickets = [
   { number: 539, title: 'Rejeição na emissão', status: 'InProgress' as const, threatens: true },
 ];
 
-// Spec: relatorio-de-status, requirements "Rascunho do relatório" and "Gerar o relatório pela tela" (ADR-0165).
+// Spec: relatorio-de-status, requirements "Rascunho do relatório", "Relatório em PDF" and "Gerar o relatório pela
+// tela" (ADR-0165).
 describe('Rascunho do relatório na tela', () => {
   it('fills the form with the draft and never with the hours', () => {
     const values = valuesOf({
@@ -24,6 +32,8 @@ describe('Rascunho do relatório na tela', () => {
       clientNeeds: '',
       tickets,
       risks: [{ number: 539, level: 'High', attention: 'Depende do fornecedor' }],
+      format: 'Pdf',
+      pdfAvailable: true,
     });
 
     expect(values).toEqual({
@@ -32,8 +42,36 @@ describe('Rascunho do relatório na tela', () => {
       nextSteps: '',
       clientNeeds: '',
       risks: [{ number: 539, level: 'High', attention: 'Depende do fornecedor' }],
+      format: 'Pdf',
       showHours: false,
     });
+  });
+
+  it('comes in PowerPoint when the PDF cannot be made', () => {
+    const draft = {
+      last: null,
+      summary: '',
+      focus: '',
+      nextSteps: '',
+      clientNeeds: '',
+      tickets: [],
+      risks: [],
+      format: 'Pdf' as const,
+      pdfAvailable: false,
+    };
+
+    expect(valuesOf(draft).format).toBe('PowerPoint');
+  });
+
+  it('tells the PDF too large and the conversion that failed apart', () => {
+    expect(failureKey({ type: pdfProblems.tooLarge, status: 409 })).toBe(
+      'projects.statusReport.tooLargeForPdf',
+    );
+    expect(failureKey({ type: pdfProblems.failed, status: 502 })).toBe(
+      'projects.statusReport.pdfFailed',
+    );
+    expect(failureKey({ status: 500 })).toBe('projects.statusReport.failed');
+    expect(failureKey(undefined)).toBe('projects.statusReport.failed');
   });
 
   it('lists the tickets that threaten milestones first', () => {
@@ -60,6 +98,7 @@ describe('Rascunho do relatório na tela', () => {
       nextSteps: '',
       clientNeeds: '',
       risks: [],
+      format: 'PowerPoint',
       showHours: false,
     };
 

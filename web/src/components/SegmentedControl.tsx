@@ -8,12 +8,15 @@ export interface SegmentedOption<Value extends string> {
   icon?: typeof SvgIcon;
   /** How many items the option has, after the label (as "Todos 9" in the tab Chamados). */
   count?: number;
+  /** An option that cannot be chosen now, in the disabled text color; the reason goes beside the control. */
+  disabled?: boolean;
 }
 
 /**
  * Segmented control of the design system (SegmentedControl, fp-segmented): a few options side by side, one chosen.
- * It is a radio group, so the left and right arrows move between the options and choose them. With iconsOnly, each
- * option shows only its icon, and the label is its accessible name and tooltip (fp-segmented--icons).
+ * It is a radio group, so the left and right arrows move between the options and choose them, skipping the disabled
+ * ones. With iconsOnly, each option shows only its icon, and the label is its accessible name and tooltip
+ * (fp-segmented--icons).
  */
 export function SegmentedControl<Value extends string>({
   label,
@@ -21,6 +24,7 @@ export function SegmentedControl<Value extends string>({
   options,
   onChange,
   iconsOnly = false,
+  describedBy,
 }: {
   /** Accessible name of the group. */
   label: string;
@@ -28,6 +32,8 @@ export function SegmentedControl<Value extends string>({
   options: readonly SegmentedOption<Value>[];
   onChange: (value: Value) => void;
   iconsOnly?: boolean;
+  /** The id of the text that explains the group, such as why an option is disabled. */
+  describedBy?: string;
 }) {
   const buttons = useRef<(HTMLButtonElement | null)[]>([]);
 
@@ -38,11 +44,14 @@ export function SegmentedControl<Value extends string>({
       return;
     }
     event.preventDefault();
-    const next = (index + step + options.length) % options.length;
-    const option = options[next];
-    if (option !== undefined) {
-      onChange(option.value);
-      buttons.current[next]?.focus();
+    for (let moved = 1; moved < options.length; moved++) {
+      const next = (index + step * moved + options.length * moved) % options.length;
+      const option = options[next];
+      if (option !== undefined && option.disabled !== true) {
+        onChange(option.value);
+        buttons.current[next]?.focus();
+        return;
+      }
     }
   };
 
@@ -50,6 +59,7 @@ export function SegmentedControl<Value extends string>({
     <Box
       role="radiogroup"
       aria-label={label}
+      aria-describedby={describedBy}
       sx={{
         display: 'inline-flex',
         gap: '2px',
@@ -61,6 +71,7 @@ export function SegmentedControl<Value extends string>({
     >
       {options.map((option, index) => {
         const checked = option.value === value;
+        const disabled = option.disabled === true;
         const Icon = option.icon;
         return (
           <Box
@@ -69,6 +80,7 @@ export function SegmentedControl<Value extends string>({
             type="button"
             role="radio"
             aria-checked={checked}
+            aria-disabled={disabled || undefined}
             aria-label={iconsOnly ? option.label : undefined}
             title={iconsOnly ? option.label : undefined}
             tabIndex={checked ? 0 : -1}
@@ -76,7 +88,9 @@ export function SegmentedControl<Value extends string>({
               buttons.current[index] = element;
             }}
             onClick={() => {
-              onChange(option.value);
+              if (!disabled) {
+                onChange(option.value);
+              }
             }}
             onKeyDown={(event: KeyboardEvent) => {
               move(event, index);
@@ -99,6 +113,7 @@ export function SegmentedControl<Value extends string>({
               whiteSpace: 'nowrap',
               cursor: 'pointer',
               '&:hover': { color: 'var(--text)' },
+              '&[aria-disabled="true"]': { color: 'var(--text-disabled)', cursor: 'not-allowed' },
               '&[aria-checked="true"]': {
                 backgroundColor: 'var(--bg-surface)',
                 color: 'var(--text)',

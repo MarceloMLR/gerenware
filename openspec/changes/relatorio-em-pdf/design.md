@@ -25,7 +25,7 @@ O `SharePointFileStorage` já segue o endereço que o Graph devolve ao abrir um 
 
 ### D1. A conversão num contrato próprio do `Files.Contracts`
 
-O `IFileConversion` tem `ConvertsToPdf` e `ToPdfAsync(fileId, cancellationToken)`, que devolve um `FileDownload` com o PDF, o nome com `.pdf`, `application/pdf` e o tamanho. O limite fica em `FileConversion.MaxBytes`, 2 MB. A falha é a `FileConversionException`, com o motivo (`TooLarge` ou `Refused`), o código HTTP e o `error.code` do Graph.
+O `IFileConversion` tem `ConvertsToPdf` e `ToPdfAsync(fileId, cancellationToken)`, que devolve um `FileDownload` com o PDF, o nome com `.pdf`, `application/pdf` e o tamanho, ou nulo quando o arquivo não existe. O limite fica em `FileConversion.MaxBytes`, 2 MB. A falha é a `FileConversionException`, com o motivo (`TooLarge` ou `Refused`), o código HTTP e o `error.code` do Graph.
 
 - O `SharePointFileStorage` implementa os dois contratos, registrado uma vez e entregue como `IFileStorage` e `IFileConversion`.
 - A implementação local registra o `NoFileConversion`, com `ConvertsToPdf` falso e o `ToPdfAsync` que lança `NotSupportedException`.
@@ -60,8 +60,8 @@ Uma `FileConversionException` vira o resultado `PdfFailed` e a resposta 502 `sta
 ### D5. A conversão no SharePoint
 
 - `GET drives/{drive}/items/{id}/content?format=pdf`, pelo mesmo `SendAsync`, com as novas tentativas e o endereço da resposta seguido sem o token. O `HttpClient` não leva o `Authorization` no redirecionamento para outro host; o abrir de hoje já depende disso.
-- Antes, ela confere que o item está dentro da raiz (o de fora conta como inexistente, `FileNotFoundException`) e o tamanho dele: acima do limite, `TooLarge`, sem chamar o Graph.
-- Resposta sem sucesso vira `Refused`, com o código HTTP e o `error.code`, sem o nome do arquivo nem o token, e vai para o log como aviso no caso de uso.
+- Antes, ela confere que o item está dentro da raiz (o de fora conta como inexistente, e a resposta é nula, como no abrir) e o tamanho dele: acima do limite, `TooLarge`, sem chamar o Graph.
+- Resposta sem sucesso vira `Refused`, com o código HTTP e o `error.code`, sem o nome do arquivo nem o token, e vai para o log como aviso na rota, que tem o registro de log (os casos de uso não têm).
 - O PDF é lido para a memória antes de devolver, porque o endereço pré-autenticado vale poucos minutos e o PDF tem no máximo alguns megabytes.
 
 ### D6. As respostas de erro

@@ -3,6 +3,7 @@ import { http, HttpResponse } from 'msw';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { StatusReportDraft } from '../api/client';
 import ptBR from '../locales/pt-BR.json';
+import { untilIdle } from '../test/busy';
 import { renderApp } from '../test/renderApp';
 import {
   type DemoProject,
@@ -42,6 +43,8 @@ beforeEach(() => {
       { number: 545, title: 'Dúvida sobre o relatório fiscal', status: 'Open', threatens: false },
     ],
     risks: [{ number: 539, level: 'Medium', attention: '' }],
+    format: 'PowerPoint',
+    pdfAvailable: true,
   };
   generate = () =>
     HttpResponse.json({
@@ -89,6 +92,9 @@ async function openDialog() {
 }
 
 // Spec: relatorio-de-status, requirement "Gerar o relatório pela tela" (ADR-0133, ADR-0165, ADR-0166).
+const formatOf = (dialog: HTMLElement) =>
+  within(dialog).getByRole('radiogroup', { name: text.format });
+
 describe('Gerar o relatório pela tela', () => {
   it('Gerar relatório pela tela', async () => {
     const dialog = await openDialog();
@@ -112,6 +118,7 @@ describe('Gerar o relatório pela tela', () => {
         nextSteps: '',
         clientNeeds: '',
         risks: [{ number: 539, level: 'Medium', attention: '' }],
+        format: 'PowerPoint',
         showHours: true,
       },
     ]);
@@ -181,6 +188,78 @@ describe('Gerar o relatório pela tela', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: text.generate }));
 
     expect(await within(dialog).findByText(text.errors.risks)).toBeVisible();
+    expect(screen.getByRole('dialog', { name: text.title })).toBeVisible();
+    expect(downloads).toEqual([]);
+  });
+
+  it('PDF pela tela', async () => {
+    draft = { ...draft, format: 'Pdf' };
+    generate = () =>
+      HttpResponse.json({
+        documentId: '0199f5a2-7c1e-7d40-9a1b-d00000000002',
+        folderId: '0199f5a2-7c1e-7d40-9a1b-e00000000007',
+        folderName: 'Relatórios de status',
+        name: 'ERP-FIN - Relatório de status - 2026-10-19.pdf',
+        version: 1,
+      });
+    const dialog = await openDialog();
+
+    // The format of the last report comes chosen; the PowerPoint is still a choice.
+    expect(within(formatOf(dialog)).getByRole('radio', { name: text.formats.Pdf })).toBeChecked();
+    fireEvent.click(within(formatOf(dialog)).getByRole('radio', { name: text.formats.PowerPoint }));
+    fireEvent.click(within(formatOf(dialog)).getByRole('radio', { name: text.formats.Pdf }));
+    fireEvent.click(within(dialog).getByRole('button', { name: text.generate }));
+
+    expect(
+      await screen.findByText(text.saved.replace('{{folder}}', 'Relatórios de status')),
+    ).toBeVisible();
+    expect(sent).toEqual([expect.objectContaining({ format: 'Pdf' })]);
+    expect(downloads).toEqual([
+      `/api/projects/${project.id}/documents/0199f5a2-7c1e-7d40-9a1b-d00000000002/content?download=true`,
+    ]);
+  });
+
+  it('PDF indisponível na tela', async () => {
+    draft = { ...draft, format: 'Pdf', pdfAvailable: false };
+    const dialog = await openDialog();
+
+    const pdf = within(formatOf(dialog)).getByRole('radio', { name: text.formats.Pdf });
+    expect(pdf).toHaveAttribute('aria-disabled', 'true');
+    expect(
+      within(formatOf(dialog)).getByRole('radio', { name: text.formats.PowerPoint }),
+    ).toBeChecked();
+    expect(formatOf(dialog)).toHaveAccessibleDescription(text.pdfUnavailable);
+    expect(within(dialog).getByText(text.pdfUnavailable)).toBeVisible();
+
+    fireEvent.click(pdf);
+    fireEvent.click(within(dialog).getByRole('button', { name: text.generate }));
+
+    await waitFor(() => {
+      expect(sent).toHaveLength(1);
+    });
+    expect(sent[0]).toMatchObject({ format: 'PowerPoint' });
+  });
+
+  it('Erro da conversão na tela', async () => {
+    let answer = 0;
+    generate = () => {
+      answer++;
+      return answer === 1
+        ? problem(409, 'urn:gerenware:problem:status-report-too-large-for-pdf', {
+            maxBytes: 2097152,
+          })
+        : problem(502, 'urn:gerenware:problem:status-report-pdf-failed');
+    };
+    draft = { ...draft, format: 'Pdf' };
+    const dialog = await openDialog();
+
+    const button = within(dialog).getByRole('button', { name: text.generate });
+    fireEvent.click(button);
+    expect(await within(dialog).findByText(text.tooLargeForPdf)).toBeVisible();
+    await untilIdle(button);
+    fireEvent.click(button);
+    expect(await within(dialog).findByText(text.pdfFailed)).toBeVisible();
+
     expect(screen.getByRole('dialog', { name: text.title })).toBeVisible();
     expect(downloads).toEqual([]);
   });

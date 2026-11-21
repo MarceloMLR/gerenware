@@ -1191,10 +1191,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description The draft of a new status report of the project: the last texts, the open tickets and the risks suggested (ADR-0165). */
+        /** @description The draft of a new status report of the project: the last texts, the open tickets, the risks suggested and the format (ADR-0165). */
         get: operations["GetStatusReportDraft"];
         put?: never;
-        /** @description Generates the status report of the project in PowerPoint and keeps it in the folder of the status reports, in any status of the project (ADR-0165, ADR-0166). */
+        /** @description Generates the status report of the project in PowerPoint or PDF and keeps it in the folder of the status reports, in any status of the project (ADR-0165, ADR-0166). */
         post: operations["GenerateStatusReport"];
         delete?: never;
         options?: never;
@@ -4759,7 +4759,8 @@ export interface components {
         };
         /**
          * @description The draft of a new status report (ADR-0165): the last report, its four texts, the open tickets of the project and
-         *     the risks suggested, the ones of the last report still open and the tickets that threaten milestones.
+         *     the risks suggested, the ones of the last report still open and the tickets that threaten milestones; the format of
+         *     the last report, the PowerPoint at the first one, and whether the PDF can be made, only with the files in SharePoint.
          */
         StatusReportDraftResponse: {
             last: null | components["schemas"]["StatusReportLastResponse"];
@@ -4769,7 +4770,14 @@ export interface components {
             clientNeeds: string;
             tickets: components["schemas"]["StatusReportTicketResponse"][];
             risks: components["schemas"]["StatusReportRiskResponse"][];
+            format: components["schemas"]["StatusReportFormat"];
+            pdfAvailable: boolean;
         };
+        /**
+         * @description The format the status report comes out in (ADR-0165): the PowerPoint, or its PDF, converted by the storage.
+         * @enum {unknown}
+         */
+        StatusReportFormat: "PowerPoint" | "Pdf";
         /** @description When and by whom the last report of the project was generated. */
         StatusReportLastResponse: {
             /** Format: date-time */
@@ -4793,6 +4801,7 @@ export interface components {
              * @default false
              */
             showHours: boolean;
+            format?: null | components["schemas"]["StatusReportFormat"];
         };
         /** @description The report kept in the documents of the project: the document, its folder, its name and its version. */
         StatusReportResponse: {
@@ -10279,6 +10288,24 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -5360,7 +5360,7 @@
         "tags": [
           "Projects"
         ],
-        "description": "The draft of a new status report of the project: the last texts, the open tickets and the risks suggested (ADR-0165).",
+        "description": "The draft of a new status report of the project: the last texts, the open tickets, the risks suggested and the format (ADR-0165).",
         "operationId": "GetStatusReportDraft",
         "parameters": [
           {
@@ -5420,7 +5420,7 @@
         "tags": [
           "Projects"
         ],
-        "description": "Generates the status report of the project in PowerPoint and keeps it in the folder of the status reports, in any status of the project (ADR-0165, ADR-0166).",
+        "description": "Generates the status report of the project in PowerPoint or PDF and keeps it in the folder of the status reports, in any status of the project (ADR-0165, ADR-0166).",
         "operationId": "GenerateStatusReport",
         "parameters": [
           {
@@ -5486,6 +5486,26 @@
           },
           "403": {
             "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Bad Gateway",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -18789,7 +18809,9 @@
           "nextSteps",
           "clientNeeds",
           "tickets",
-          "risks"
+          "risks",
+          "format",
+          "pdfAvailable"
         ],
         "type": "object",
         "properties": {
@@ -18826,9 +18848,22 @@
             "items": {
               "$ref": "#/components/schemas/StatusReportRiskResponse"
             }
+          },
+          "format": {
+            "$ref": "#/components/schemas/StatusReportFormat"
+          },
+          "pdfAvailable": {
+            "type": "boolean"
           }
         },
-        "description": "The draft of a new status report (ADR-0165): the last report, its four texts, the open tickets of the project and\nthe risks suggested, the ones of the last report still open and the tickets that threaten milestones."
+        "description": "The draft of a new status report (ADR-0165): the last report, its four texts, the open tickets of the project and\nthe risks suggested, the ones of the last report still open and the tickets that threaten milestones; the format of\nthe last report, the PowerPoint at the first one, and whether the PDF can be made, only with the files in SharePoint."
+      },
+      "StatusReportFormat": {
+        "enum": [
+          "PowerPoint",
+          "Pdf"
+        ],
+        "description": "The format the status report comes out in (ADR-0165): the PowerPoint, or its PDF, converted by the storage."
       },
       "StatusReportLastResponse": {
         "required": [
@@ -18899,6 +18934,17 @@
             "type": "boolean",
             "description": "Whether the hours of the project go in, only the totals (ADR-0166).",
             "default": false
+          },
+          "format": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "description": "PowerPoint, the default, or Pdf, converted by Microsoft 365, only with the files in SharePoint (ADR-0165).",
+                "$ref": "#/components/schemas/StatusReportFormat"
+              }
+            ]
           }
         },
         "description": "What the person wrote and chose to generate a status report (ADR-0165, ADR-0166)."

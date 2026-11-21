@@ -130,6 +130,7 @@ export type AdditionalHours = components['schemas']['AdditionalHoursResponse'];
 export type OverviewTimeline = components['schemas']['OverviewTimelineResponse'];
 export type OverviewTeam = components['schemas']['OverviewTeamResponse'];
 export type StatusReportDraft = components['schemas']['StatusReportDraftResponse'];
+export type StatusReportFormat = components['schemas']['StatusReportFormat'];
 export type StatusReportTicket = components['schemas']['StatusReportTicketResponse'];
 export type RiskLevel = components['schemas']['RiskLevel'];
 /** Who may take an action of the flow (TicketActors in the Tickets module). */

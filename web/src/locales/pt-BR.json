@@ -2243,7 +2243,7 @@
     "statusReport": {
       "action": "Gerar relatório de status",
       "title": "Relatório de status",
-      "intro": "O relatório do {{code}} sai em PowerPoint, com os números de hoje do cronograma e dos chamados, e fica guardado nos documentos do projeto.",
+      "intro": "O relatório do {{code}} sai com os números de hoje do cronograma e dos chamados e fica guardado nos documentos do projeto.",
       "last": "Último relatório: {{day}}, por {{name}}. Os textos e os riscos vêm dele.",
       "loading": "Carregando o rascunho…",
       "loadFailed": "Não foi possível carregar o rascunho. Tente de novo.",
@@ -2265,6 +2265,12 @@
         "Low": "Baixa"
       },
       "attention": "Ponto de atenção",
+      "format": "Formato",
+      "formats": {
+        "PowerPoint": "PowerPoint",
+        "Pdf": "PDF"
+      },
+      "pdfUnavailable": "O PDF é feito pelo Microsoft 365 com os arquivos no SharePoint, que esta instalação não usa.",
       "showHours": "Mostrar horas",
       "showHoursHelp": "As horas contratadas, as adicionais, as apontadas e o saldo do projeto, e as horas de cada tarefa. As horas de cada pessoa nunca entram.",
       "generate": "Gerar relatório",
@@ -2272,6 +2278,8 @@
       "saved": "Relatório guardado em {{folder}}.",
       "openDocuments": "Abrir documentos",
       "failed": "Não foi possível gerar o relatório. Tente de novo.",
+      "tooLargeForPdf": "Com os logos, o relatório passou de 2 MB, o limite da conversão em PDF. Gere em PowerPoint.",
+      "pdfFailed": "O Microsoft 365 não converteu o relatório em PDF, e nada foi guardado. Tente de novo ou gere em PowerPoint.",
       "errors": {
         "textTooLong": "Até 1.000 caracteres.",
         "attentionTooLong": "Até 500 caracteres.",

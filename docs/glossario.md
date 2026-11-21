@@ -116,7 +116,9 @@ Termos do negócio, como aparecem nas specs e na interface, e o nome usado no c�
 | Folga | Float, ScheduleSlack, `float` | Dias úteis que uma tarefa ou marco pode terminar depois sem mudar o fim do projeto (GanttB-1) |
 | Fim previsto | Planned end, `plannedEndOf` | O fim de uma tarefa ou marco na linha de base (Status-3) |
 | Fim real | Actual end, `actualEndOf`, `completedOn`, `reachedOn` | O dia em que a tarefa chegou a 100% ou o marco foi atingido, informado por quem conclui ou o dia de hoje (ADR-0167) |
-| Relatório de status | StatusReport, `GenerateStatusReport`, `status-report` | O PowerPoint do status do projeto para o cliente, gerado pelo administrador e pelo gerente e guardado na pasta dos relatórios (ADR-0165) |
+| Relatório de status | StatusReport, `GenerateStatusReport`, `status-report` | O PowerPoint do status do projeto para o cliente, ou o PDF dele, gerado pelo administrador e pelo gerente e guardado na pasta dos relatórios (ADR-0165) |
+| Formato do relatório: PowerPoint, PDF | StatusReportFormat: PowerPoint, Pdf | Escolhido ao gerar; vem o do último relatório, e o PDF só com os arquivos no SharePoint (ADR-0165) |
+| Conversão em PDF | IFileConversion, `ToPdfAsync`, `FileConversion.MaxBytes` | O PDF de um arquivo guardado, feito pelo Microsoft Graph no SharePoint, de arquivos até 2 MB; a pasta local não converte (ADR-0165) |
 | Risco (do relatório) | StatusReportRisk | Um chamado em aberto do projeto com um slide no relatório, com a classificação e o ponto de atenção (ADR-0165) |
 | Classificação do risco: Alta, Média, Baixa | RiskLevel: High, Medium, Low | Escolhida por quem gera o relatório; a sugerida pela primeira vez é Média (ADR-0165) |
 | Ponto de atenção | Attention | O texto de cada risco no relatório, até 500 caracteres (ADR-0165) |
