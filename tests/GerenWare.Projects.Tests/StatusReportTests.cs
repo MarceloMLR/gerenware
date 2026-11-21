@@ -11,7 +11,8 @@ using P = DocumentFormat.OpenXml.Presentation;
 namespace GerenWare.Projects.Tests;
 
 // Spec: relatorio-de-status, requirements "Rascunho do relatório", "Textos e riscos do relatório", "O que vem do
-// sistema", "Riscos no relatório", "Horas no relatório", "Modelo padrão do relatório" and "Campos do modelo" (module side).
+// sistema", "Riscos no relatório", "Horas no relatório", "Modelo padrão do relatório", "Campos do modelo" and
+// "Relatório em PDF" (module side).
 public sealed class StatusReportTests
 {
     private static readonly HashSet<int> OpenTickets = [539, 541, 545];
@@ -69,6 +70,34 @@ public sealed class StatusReportTests
             .Invalid.Should().Equal(StatusReportField.Risks);
         FormOf(risks: [new(539, RiskLevel.High, "Depende do fornecedor"), new(541, RiskLevel.Low, null)])
             .Form!.Risks.Should().Equal(new StatusReportRisk(539, RiskLevel.High, "Depende do fornecedor"), new StatusReportRisk(541, RiskLevel.Low, string.Empty));
+    }
+
+    [Fact(DisplayName = "Formato do último relatório")]
+    public void NextDraft_ComesInTheFormatOfTheLastReport_AndInPowerPointAtTheFirst()
+    {
+        var notes = new StatusReportNotes(Guid.CreateVersion7());
+        notes.Format.Should().Be(StatusReportFormat.PowerPoint);
+        var (pdf, _) = StatusReportForm.Of(
+            null, null, null, null, [], false, OpenTickets, StatusReportFormat.Pdf, convertsToPdf: true);
+        notes.Keep(pdf!, Guid.CreateVersion7(), DateTime.UtcNow);
+
+        notes.Format.Should().Be(StatusReportFormat.Pdf);
+        StatusReportForm.DraftFormatOf(notes.Format, convertsToPdf: true).Should().Be(StatusReportFormat.Pdf);
+        StatusReportForm.DraftFormatOf(null, convertsToPdf: true).Should().Be(StatusReportFormat.PowerPoint);
+        StatusReportForm.DraftFormatOf(notes.Format, convertsToPdf: false).Should().Be(StatusReportFormat.PowerPoint,
+            "where the storage does not convert, the PDF is never offered");
+    }
+
+    [Fact(DisplayName = "PDF sem o SharePoint")]
+    public void Pdf_IsRefusedInItsField_WhereTheStorageDoesNotConvert()
+    {
+        var (form, invalid) = StatusReportForm.Of(null, null, null, null, [], false, OpenTickets, StatusReportFormat.Pdf);
+
+        form.Should().BeNull();
+        invalid.Should().Equal(StatusReportField.Format);
+        StatusReportForm.Of(null, null, null, null, [], false, OpenTickets, (StatusReportFormat)9, convertsToPdf: true)
+            .Invalid.Should().Equal(StatusReportField.Format);
+        StatusReportForm.Of(null, null, null, null, [], false, OpenTickets).Form!.Format.Should().Be(StatusReportFormat.PowerPoint);
     }
 
     [Fact(DisplayName = "Rascunho sem relatório anterior")]
@@ -350,9 +379,12 @@ public sealed class StatusReportTests
     }
 
     [Fact]
-    public void FileName_HasTheCodeAndTheDay()
+    public void FileName_HasTheCodeTheDayAndTheExtensionOfTheFormat()
     {
-        new PptxStatusReportRenderer().FileNameOf("ERP-FIN", Today).Should().Be("ERP-FIN - Relatório de status - 2026-11-20.pptx");
+        var renderer = new PptxStatusReportRenderer();
+
+        renderer.FileNameOf("ERP-FIN", Today, StatusReportFormat.PowerPoint).Should().Be("ERP-FIN - Relatório de status - 2026-11-20.pptx");
+        renderer.FileNameOf("ERP-FIN", Today, StatusReportFormat.Pdf).Should().Be("ERP-FIN - Relatório de status - 2026-11-20.pdf");
     }
 
     private static PresentationDocument Render(StatusReportData data) =>

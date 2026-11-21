@@ -30,6 +30,7 @@ internal sealed class StatusReportNotesConfiguration : IEntityTypeConfiguration<
         notes.Property(n => n.Focus).HasMaxLength(StatusReportLimits.TextMaxLength);
         notes.Property(n => n.NextSteps).HasMaxLength(StatusReportLimits.TextMaxLength);
         notes.Property(n => n.ClientNeeds).HasMaxLength(StatusReportLimits.TextMaxLength);
+        notes.Property(n => n.Format).HasConversion<string>().HasMaxLength(16);
         notes.HasMany(n => n.Risks).WithOne().HasForeignKey(r => r.NotesId).OnDelete(DeleteBehavior.Cascade);
         notes.Navigation(n => n.Risks).UsePropertyAccessMode(PropertyAccessMode.Field);
         notes.ExcludeFromAudit();

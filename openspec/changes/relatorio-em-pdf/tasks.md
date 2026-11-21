@@ -9,16 +9,16 @@
 
 ## 3. O PDF nos documentos
 
-- [ ] 3.1 O `SavePdfAsync` no `IStatusReportDocuments` e no `StatusReportDocuments`, com a pasta dos relatórios num método só para os dois formatos (D2, D4). Testes do módulo:
+- [x] 3.1 O `SavePdfAsync` no `IStatusReportDocuments` e no `StatusReportDocuments`, com a pasta dos relatórios num método só para os dois formatos (D2, D4). Testes do módulo:
   - o PDF guardado e a nova versão no mesmo dia;
   - o provisório removido no sucesso e na falha;
   - nada guardado quando a conversão falha.
 
 ## 4. O formato no relatório
 
-- [ ] 4.1 O `StatusReportFormat` no domínio, o `Format` do `StatusReportNotes` e o `StatusReportField.Format`, com os testes do domínio (D3)
-- [ ] 4.2 A coluna `format` em `projects.status_report_notes` (migração do `Projects`)
-- [ ] 4.3 O formato no `GetStatusReportDraft` (`format`, `pdfAvailable`) e no `GenerateStatusReport`, com o 409 antes de guardar e o 502 sem gravar os textos (D4), e o `FileNameOf` com a extensão
+- [x] 4.1 O `StatusReportFormat` no domínio, o `Format` do `StatusReportNotes` e o `StatusReportField.Format`, com os testes do domínio (D3)
+- [x] 4.2 A coluna `format` em `projects.status_report_notes` (migração do `Projects`)
+- [x] 4.3 O formato no `GetStatusReportDraft` (`format`, `pdfAvailable`) e no `GenerateStatusReport`, com o 409 antes de guardar e o 502 sem gravar os textos (D4), e o `FileNameOf` com a extensão
 - [ ] 4.4 As rotas com o `format` no rascunho e no pedido e o 409 e o 502 em Problem Details (D6), com o contrato da API atualizado (`npm run api:update`). Testes da API dos cenários de "Relatório em PDF", "Limite e falha da conversão" e "Relatório guardado nos documentos", com o `FakeSharePoint`
 
 ## 5. A tela
