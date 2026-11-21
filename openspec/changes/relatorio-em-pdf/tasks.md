@@ -1,11 +1,11 @@
 ## 1. Roadmap
 
-- [ ] 1.1 Status-5 "Em andamento" no `docs/roadmap.md`
+- [x] 1.1 Status-5 "Em andamento" no `docs/roadmap.md`
 
 ## 2. A conversão no armazenamento
 
-- [ ] 2.1 O `IFileConversion`, o `FileConversion.MaxBytes` e a `FileConversionException` no `Files.Contracts`, com o `NoFileConversion` para a implementação local e o registro dos dois contratos no `FilesModule` (D1)
-- [ ] 2.2 A conversão pelo Graph no `SharePointFileStorage` (D5) e, no `FakeSharePoint`, o `format=pdf` e o `ConversionFailure` (D9). Testes dos cenários de "Conversão em PDF"
+- [x] 2.1 O `IFileConversion`, o `FileConversion.MaxBytes` e a `FileConversionException` no `Files.Contracts`, com o `NoFileConversion` para a implementação local e o registro dos dois contratos no `FilesModule` (D1)
+- [x] 2.2 A conversão pelo Graph no `SharePointFileStorage` (D5) e, no `FakeSharePoint`, o `format=pdf` e o `ConversionFailure` (D9). Testes dos cenários de "Conversão em PDF"
 
 ## 3. O PDF nos documentos
 

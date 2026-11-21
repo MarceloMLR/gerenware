@@ -13,8 +13,9 @@ namespace GerenWare.Testing;
 /// A site of SharePoint simulated inside the process (ADR-0056, ADR-0120), as Microsoft Graph shows it: the site of an
 /// address, its document libraries and their folders and files, with ids that do not change, the versions of a file
 /// (newest first), "fail" and "replace" on a name taken, the path of the parent of each item and the eTag a removal may
-/// check. The content of a file comes in the answer itself, where Graph sends the address of the content. It can also
-/// throttle the next requests, as Graph does. Nothing reaches the network.
+/// check. The content of a file comes in the answer itself, where Graph sends the address of the content, also its PDF
+/// ("format=pdf", a small PDF that names the file converted). It can also throttle the next requests and refuse the
+/// conversions, as Graph does. Nothing reaches the network.
 /// </summary>
 public sealed partial class FakeSharePoint : HttpMessageHandler
 {
@@ -33,6 +34,7 @@ public sealed partial class FakeSharePoint : HttpMessageHandler
     private readonly Dictionary<string, Item> _items = [];
     private readonly Dictionary<string, Drive> _drives = [];
     private readonly ConcurrentQueue<string> _requests = new();
+    private readonly ConcurrentQueue<string> _conversions = new();
     private int _next;
 
     public FakeSharePoint()
@@ -46,6 +48,16 @@ public sealed partial class FakeSharePoint : HttpMessageHandler
 
     /// <summary>The next requests answered 429 with "Retry-After: 0", as Graph throttling.</summary>
     public int ThrottleNext { get; set; }
+
+    /// <summary>The next conversions into PDF answered with this status and code of Graph; null converts.</summary>
+    public (HttpStatusCode Status, string Code)? ConversionFailure { get; set; }
+
+    /// <summary>The ids of the files whose PDF was asked, in order, converted or refused.</summary>
+    public IReadOnlyList<string> Conversions => [.. _conversions];
+
+    /// <summary>The PDF the simulation makes of a file: "%PDF-", the name and the size of the file.</summary>
+    public static byte[] PdfOf(string name, int size) =>
+        System.Text.Encoding.UTF8.GetBytes($"%PDF-1.7\n% {name} ({size.ToString(CultureInfo.InvariantCulture)} bytes)\n%%EOF\n");
 
     /// <summary>The requests, as "GET drives/.../items/...", in order.</summary>
     public IReadOnlyList<string> Requests => [.. _requests];
@@ -150,6 +162,7 @@ public sealed partial class FakeSharePoint : HttpMessageHandler
             ("PUT", not null, ":/content") => Upload(drive, item, name, query["@microsoft.graph.conflictBehavior"] ?? "replace", body),
             ("POST", null, "/children") => CreateFolder(drive, item, body),
             ("GET", null, "/children") => ChildrenPage(drive, item, query["$skiptoken"]),
+            ("GET", null, "/content") when !item.IsFolder && query["format"] == "pdf" => Converted(item),
             ("GET", null, "/content") when !item.IsFolder => Content(item.Versions[^1]),
             ("GET", null, "/versions") when !item.IsFolder => Json(new
             {
@@ -161,6 +174,14 @@ public sealed partial class FakeSharePoint : HttpMessageHandler
             ("PATCH", null, "") => Rename(item, body),
             _ => Failure(HttpStatusCode.BadRequest, "invalidRequest"),
         };
+    }
+
+    private HttpResponseMessage Converted(Item file)
+    {
+        _conversions.Enqueue(file.Id);
+        return ConversionFailure is { } failure
+            ? Failure(failure.Status, failure.Code)
+            : Content(PdfOf(file.Name, file.Versions[^1].Length));
     }
 
     private HttpResponseMessage Upload(Drive drive, Item folder, string name, string conflict, byte[] body)

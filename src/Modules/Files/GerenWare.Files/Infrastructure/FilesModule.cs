@@ -9,8 +9,9 @@ namespace GerenWare.Files.Infrastructure;
 
 /// <summary>
 /// Services of the Files module: the file storage the other modules use, chosen in the configuration (ADR-0079): a
-/// site of SharePoint through Microsoft Graph (ADR-0120) or a local folder outside production. The module has no
-/// tables and no routes; each module that keeps files registers them and serves them.
+/// site of SharePoint through Microsoft Graph (ADR-0120) or a local folder outside production, and the conversion into
+/// PDF, which only SharePoint does (ADR-0165). The module has no tables and no routes; each module that keeps files
+/// registers them and serves them.
 /// </summary>
 public static class FilesModule
 {
@@ -42,6 +43,11 @@ public static class FilesModule
             var contentRoot = provider.GetRequiredService<IHostEnvironment>().ContentRootPath;
             return new LocalFileStorage(Path.Combine(contentRoot, options.Local.RootPath));
         });
+        // The same SharePoint storage converts; any other storage, or none configured, does not.
+        services.AddSingleton<IFileConversion>(provider =>
+            provider.GetRequiredService<IOptions<FileStorageOptions>>().Value.IsSharePoint
+                ? provider.GetRequiredService<IFileStorage>() as IFileConversion ?? NoFileConversion.Instance
+                : NoFileConversion.Instance);
         return services;
     }
 }
