@@ -14,4 +14,13 @@ public interface IStatusReportDocuments
     /// or as a new version of the document with the same name.
     /// </summary>
     Task<SavedStatusReport> SaveAsync(Guid projectId, string name, Stream content, Guid userId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Keeps only the PDF of the PowerPoint, converted by the storage (ADR-0165), as <see cref="SaveAsync"/> keeps a
+    /// file: the PowerPoint goes to the storage of the folder with a temporary name only for the conversion, and is
+    /// removed after it, also when the conversion fails, which throws the exception of the conversion of the Files
+    /// module and keeps nothing.
+    /// </summary>
+    Task<SavedStatusReport> SavePdfAsync(
+        Guid projectId, string name, Stream powerPoint, Guid userId, CancellationToken cancellationToken);
 }

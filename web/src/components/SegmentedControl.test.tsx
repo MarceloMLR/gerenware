@@ -5,7 +5,13 @@ import { describe, expect, it } from 'vitest';
 import { AppThemeProvider } from '../theme/AppThemeProvider';
 import { SegmentedControl } from './SegmentedControl';
 
-function Choice({ iconsOnly = false }: { iconsOnly?: boolean }) {
+function Choice({
+  iconsOnly = false,
+  disabled = [],
+}: {
+  iconsOnly?: boolean;
+  disabled?: readonly string[];
+}) {
   const [value, setValue] = useState<'a' | 'b' | 'c'>('a');
   return (
     <AppThemeProvider>
@@ -15,11 +21,18 @@ function Choice({ iconsOnly = false }: { iconsOnly?: boolean }) {
         value={value}
         options={[
           { value: 'a', label: 'Comfortable', icon: LightModeOutlined },
-          { value: 'b', label: 'Compact', icon: LightModeOutlined },
+          {
+            value: 'b',
+            label: 'Compact',
+            icon: LightModeOutlined,
+            disabled: disabled.includes('b'),
+          },
           { value: 'c', label: 'Dense', icon: LightModeOutlined },
         ]}
         onChange={setValue}
+        describedBy="density-help"
       />
+      <span id="density-help">Compact needs a larger screen.</span>
     </AppThemeProvider>
   );
 }
@@ -51,6 +64,25 @@ describe('Controle segmentado', () => {
         .getAllByRole('radio')
         .map((option) => option.tabIndex),
     ).toEqual([-1, -1, 0]);
+  });
+
+  it('Opção desabilitada', () => {
+    render(<Choice disabled={['b']} />);
+
+    const compact = screen.getByRole('radio', { name: 'Compact' });
+    expect(compact).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByRole('radiogroup', { name: 'Density' })).toHaveAccessibleDescription(
+      'Compact needs a larger screen.',
+    );
+
+    fireEvent.click(compact);
+    expect(checked()).toEqual(['Comfortable']);
+
+    // The arrows skip it, both ways.
+    fireEvent.keyDown(screen.getByRole('radio', { name: 'Comfortable' }), { key: 'ArrowRight' });
+    expect(checked()).toEqual(['Dense']);
+    fireEvent.keyDown(screen.getByRole('radio', { name: 'Dense' }), { key: 'ArrowLeft' });
+    expect(checked()).toEqual(['Comfortable']);
   });
 
   it('Só com ícones', () => {

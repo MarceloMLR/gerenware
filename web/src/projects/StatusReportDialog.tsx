@@ -10,6 +10,7 @@ import { Alert } from '../components/Alert';
 import { Button } from '../components/Button';
 import { Checkbox } from '../components/Checkbox';
 import { Dialog } from '../components/Dialog';
+import { FormField } from '../components/FormField';
 import { MultiSelect } from '../components/MultiSelect';
 import { SegmentedControl } from '../components/SegmentedControl';
 import { TextArea } from '../components/TextArea';
@@ -19,10 +20,12 @@ import { useDates } from '../format/useDates';
 import { useNotify } from '../notices/notify';
 import { invalidFields } from './projectForm';
 import {
+  failureKey,
   isStatusReportError,
   riskLevels,
   risksAfter,
   statusReportErrors,
+  statusReportFormats,
   statusReportLimits,
   statusReportSchema,
   ticketLabel,
@@ -41,8 +44,8 @@ const riskField = <Part extends 'level' | 'attention'>(index: number, part: Part
 
 /**
  * "Gerar relatório de status" (ADR-0165, ADR-0166): the draft of the report, read each time the dialog opens, with the
- * texts and the risks of the last report; on "Gerar relatório", the file is generated, kept in the folder of the
- * status reports and downloaded.
+ * texts, the risks and the format of the last report; on "Gerar relatório", the PowerPoint or its PDF is generated,
+ * kept in the folder of the status reports and downloaded. Without the PDF, its option is disabled, with the reason.
  */
 export function StatusReportDialog({
   project,
@@ -127,16 +130,18 @@ function StatusReportForm({
         onClose();
         return;
       }
-      const fields = response.status === 400 ? invalidFields(error) : [];
-      for (const field of fields) {
+      let shown = false;
+      for (const field of response.status === 400 ? invalidFields(error) : []) {
         if (field === 'risks') {
           setError('risks', { message: statusReportErrors.risks });
+          shown = true;
         } else if ((texts as readonly string[]).includes(field)) {
           setError(field as Texts, { message: statusReportErrors.textTooLong });
+          shown = true;
         }
       }
-      if (fields.length === 0) {
-        setError('root', { message: t('projects.statusReport.failed') });
+      if (!shown) {
+        setError('root', { message: t(failureKey(error)) });
       }
     } catch {
       setError('root', { message: t('projects.statusReport.failed') });
@@ -267,6 +272,31 @@ function StatusReportForm({
             </Box>
           );
         })}
+        <Controller
+          control={control}
+          name="format"
+          render={({ field }) => (
+            <FormField
+              label={t('projects.statusReport.format')}
+              helper={draft.pdfAvailable ? undefined : t('projects.statusReport.pdfUnavailable')}
+              helpId="status-report-format-help"
+            >
+              <Box sx={{ alignSelf: 'flex-start' }}>
+                <SegmentedControl
+                  label={t('projects.statusReport.format')}
+                  value={field.value}
+                  options={statusReportFormats.map((format) => ({
+                    value: format,
+                    label: t(`projects.statusReport.formats.${format}`),
+                    disabled: format === 'Pdf' && !draft.pdfAvailable,
+                  }))}
+                  onChange={field.onChange}
+                  describedBy={draft.pdfAvailable ? undefined : 'status-report-format-help'}
+                />
+              </Box>
+            </FormField>
+          )}
+        />
         <Controller
           control={control}
           name="showHours"

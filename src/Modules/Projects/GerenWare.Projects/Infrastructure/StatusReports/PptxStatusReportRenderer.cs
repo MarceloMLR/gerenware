@@ -21,11 +21,11 @@ internal sealed class PptxStatusReportRenderer : IStatusReportRenderer
         return Task.FromResult(StatusReportFiller.Fill(template, ValuesOf(data)));
     }
 
-    public string FileNameOf(string projectCode, DateOnly day) =>
+    public string FileNameOf(string projectCode, DateOnly day, StatusReportFormat format) =>
         Texts["fileName"]
             .Replace("{code}", projectCode, StringComparison.Ordinal)
             .Replace("{day}", day.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), StringComparison.Ordinal)
-        + ".pptx";
+        + (format == StatusReportFormat.Pdf ? ".pdf" : ".pptx");
 
     /// <summary>The values of the fields, as the screens write them (ADR-0013): days, business days, statuses and hours.</summary>
     public static StatusReportValues ValuesOf(StatusReportData data)

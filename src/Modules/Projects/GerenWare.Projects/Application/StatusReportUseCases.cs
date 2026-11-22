@@ -98,8 +98,8 @@ public interface IStatusReportRenderer
 {
     Task<byte[]> RenderAsync(StatusReportData data, CancellationToken cancellationToken);
 
-    /// <summary>The name of the file: the code of the project, the name of the report and the day.</summary>
-    string FileNameOf(string projectCode, DateOnly day);
+    /// <summary>The name of the file: the code of the project, the name of the report and the day, with the extension of the format.</summary>
+    string FileNameOf(string projectCode, DateOnly day, StatusReportFormat format);
 }
 
 /// <summary>An open ticket that may go in as a risk: its number, title and status, and whether it threatens milestones (ADR-0164).</summary>
@@ -110,10 +110,15 @@ public sealed record StatusReportLast(DateTime GeneratedAt, Guid GeneratedById, 
 
 /// <summary>
 /// The draft of a new status report (ADR-0165): the last report, the texts it had, the open tickets that may go in as
-/// risks and the risks suggested.
+/// risks, the risks suggested, the format it comes with and whether the PDF can be made.
 /// </summary>
 public sealed record StatusReportDraft(
-    StatusReportLast? Last, StatusReportTexts Texts, IReadOnlyList<StatusReportTicket> Tickets, IReadOnlyList<StatusReportRisk> Risks);
+    StatusReportLast? Last,
+    StatusReportTexts Texts,
+    IReadOnlyList<StatusReportTicket> Tickets,
+    IReadOnlyList<StatusReportRisk> Risks,
+    StatusReportFormat Format,
+    bool PdfAvailable);
 
 public enum StatusReportOutcome
 {
@@ -127,11 +132,20 @@ public enum StatusReportOutcome
 
     /// <summary>A field was refused (400).</summary>
     Invalid = 4,
+
+    /// <summary>The PowerPoint is larger than the conversion into PDF takes, and nothing was kept (409).</summary>
+    TooLargeForPdf = 5,
+
+    /// <summary>The conversion into PDF failed, and nothing was kept (502).</summary>
+    PdfFailed = 6,
 }
 
-/// <summary>What happened to a report: the document kept, or why nothing was made.</summary>
+/// <summary>What happened to a report: the document kept, or why nothing was made, with the failure of the conversion.</summary>
 public sealed record StatusReportResult(
-    StatusReportOutcome Outcome, SavedStatusReport? Saved = null, IReadOnlyList<StatusReportField>? Invalid = null);
+    StatusReportOutcome Outcome,
+    SavedStatusReport? Saved = null,
+    IReadOnlyList<StatusReportField>? Invalid = null,
+    FileConversionException? ConversionFailure = null);
 
 /// <summary>Who generates the reports of a project (ADR-0165): the Administrator and the manager, in any status of it.</summary>
 internal static class StatusReportAccess
@@ -168,14 +182,15 @@ internal static class StatusReportAccess
 /// <summary>
 /// The draft of a new status report (ADR-0165), for who generates it: the texts of the last report, the open tickets of
 /// the project and the risks suggested (<see cref="StatusReportSuggestions"/>), with the threats in the order of the
-/// overview (ADR-0164).
+/// overview (ADR-0164), and the format of the last report, with the PDF only where the storage converts.
 /// </summary>
 public sealed class GetStatusReportDraft(
     IProjectStore projects,
     IStatusReportStore notes,
     GetProjectOverview overview,
     IEnumerable<IProjectReportTickets> tickets,
-    IUserDirectory users)
+    IUserDirectory users,
+    IFileConversion conversion)
 {
     public async Task<(StatusReportDraft? Draft, StatusReportOutcome Outcome)> ExecuteAsync(
         Guid projectId, ProjectViewer viewer, CancellationToken cancellationToken)
@@ -204,15 +219,19 @@ public sealed class GetStatusReportDraft(
             last?.Texts ?? StatusReportTexts.Empty,
             [.. open.Select(ticket => new StatusReportTicket(
                 ticket.Number, ticket.Title, ticket.Status, threatening.Contains(ticket.Number)))],
-            StatusReportSuggestions.Of(last, numbers, threatening)), StatusReportOutcome.Done);
+            StatusReportSuggestions.Of(last, numbers, threatening),
+            StatusReportForm.DraftFormatOf(last?.Format, conversion.ConvertsToPdf),
+            conversion.ConvertsToPdf), StatusReportOutcome.Done);
     }
 }
 
 /// <summary>
 /// Generates a status report (ADR-0165, ADR-0166): checks who generates and what was written
 /// (<see cref="StatusReportForm"/>), gathers the data (<see cref="StatusReportData"/>) by the rules of the overview,
-/// makes the PowerPoint (<see cref="IStatusReportRenderer"/>), keeps it in the folder of the status reports of the
-/// project (<see cref="IStatusReportDocuments"/>) and then the notes for the next draft.
+/// makes the PowerPoint (<see cref="IStatusReportRenderer"/>), keeps it, or only its PDF, in the folder of the status
+/// reports of the project (<see cref="IStatusReportDocuments"/>) and then the notes for the next draft. For the PDF, a
+/// PowerPoint larger than the conversion takes is refused before anything is stored, and a conversion that fails keeps
+/// nothing, not even the notes.
 /// </summary>
 public sealed class GenerateStatusReport(
     IProjectStore projects,
@@ -228,6 +247,7 @@ public sealed class GenerateStatusReport(
     IWorkCalendar calendar,
     IUserDirectory users,
     IStatusReportRenderer renderer,
+    IFileConversion conversion,
     TimeProvider clock)
 {
     public async Task<StatusReportResult> ExecuteAsync(
@@ -236,6 +256,7 @@ public sealed class GenerateStatusReport(
         StatusReportTexts? texts,
         IReadOnlyList<StatusReportRiskInput>? risks,
         bool showHours,
+        StatusReportFormat? format,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(viewer);
@@ -253,7 +274,9 @@ public sealed class GenerateStatusReport(
             texts?.ClientNeeds,
             risks,
             showHours,
-            open.Select(ticket => ticket.Number).ToHashSet());
+            open.Select(ticket => ticket.Number).ToHashSet(),
+            format,
+            conversion.ConvertsToPdf);
         if (form is null)
         {
             return new(StatusReportOutcome.Invalid, Invalid: invalid);
@@ -263,11 +286,31 @@ public sealed class GenerateStatusReport(
             ?? throw new InvalidOperationException("No module keeps the documents of the status reports.");
         var data = await DataOfAsync(project!, viewer, form, open, cancellationToken);
         var content = await renderer.RenderAsync(data, cancellationToken);
+        var name = renderer.FileNameOf(project!.Code, data.Today, form.Format);
         SavedStatusReport saved;
         await using (var stream = new MemoryStream(content, writable: false))
         {
-            saved = await store.SaveAsync(
-                projectId, renderer.FileNameOf(project!.Code, data.Today), stream, viewer.UserId, cancellationToken);
+            if (form.Format == StatusReportFormat.PowerPoint)
+            {
+                saved = await store.SaveAsync(projectId, name, stream, viewer.UserId, cancellationToken);
+            }
+            else if (content.LongLength > FileConversion.MaxBytes)
+            {
+                return new(StatusReportOutcome.TooLargeForPdf);
+            }
+            else
+            {
+                try
+                {
+                    saved = await store.SavePdfAsync(projectId, name, stream, viewer.UserId, cancellationToken);
+                }
+                catch (FileConversionException failure)
+                {
+                    return new(
+                        failure.Failure == FileConversionFailure.TooLarge ? StatusReportOutcome.TooLargeForPdf : StatusReportOutcome.PdfFailed,
+                        ConversionFailure: failure);
+                }
+            }
         }
 
         var kept = await notes.FindAsync(projectId, cancellationToken);

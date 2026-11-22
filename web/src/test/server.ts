@@ -1625,7 +1625,7 @@ export const handlers = [
       : HttpResponse.json(dates);
   }),
   http.get('/api/projects/:id/overview', () => HttpResponse.json(emptyOverview)),
-  // The draft of a status report of a project without a report nor open tickets (ADR-0165).
+  // The draft of a status report of a project without a report nor open tickets, in the local storage (ADR-0165).
   http.get('/api/projects/:id/status-report', () =>
     HttpResponse.json({
       last: null,
@@ -1635,6 +1635,8 @@ export const handlers = [
       clientNeeds: '',
       tickets: [],
       risks: [],
+      format: 'PowerPoint',
+      pdfAvailable: false,
     }),
   ),
   http.get('/api/projects/:id/closing', () =>

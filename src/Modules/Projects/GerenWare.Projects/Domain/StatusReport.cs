@@ -10,6 +10,13 @@ public enum RiskLevel
     Low = 3,
 }
 
+/// <summary>The format the status report comes out in (ADR-0165): the PowerPoint, or its PDF, converted by the storage.</summary>
+public enum StatusReportFormat
+{
+    PowerPoint = 1,
+    Pdf = 2,
+}
+
 /// <summary>The limits of the status report (ADR-0165), in one place: what is written and how much of each list fits.</summary>
 public static class StatusReportLimits
 {
@@ -41,6 +48,9 @@ public enum StatusReportField
     NextSteps = 3,
     ClientNeeds = 4,
     Risks = 5,
+
+    /// <summary>A format that does not exist, or the PDF where the storage does not convert.</summary>
+    Format = 6,
 }
 
 /// <summary>The four texts the manager writes (ADR-0165): the summary of the period, the current focus, the next steps and what the client must do.</summary>
@@ -70,10 +80,19 @@ public sealed record StatusReportRiskInput(int Number, RiskLevel? Level, string?
 /// <summary>
 /// What the person chose and wrote to generate a status report (ADR-0165, ADR-0166): the four texts, up to 1,000
 /// characters each; from 0 to 10 open tickets of the project as risks, without repeating, each with its level and a
-/// point of attention up to 500 characters; and whether the hours go in.
+/// point of attention up to 500 characters; whether the hours go in; and the format, the PowerPoint when none is said,
+/// with the PDF only where the storage converts.
 /// </summary>
-public sealed record StatusReportForm(StatusReportTexts Texts, IReadOnlyList<StatusReportRisk> Risks, bool ShowHours)
+public sealed record StatusReportForm(
+    StatusReportTexts Texts, IReadOnlyList<StatusReportRisk> Risks, bool ShowHours, StatusReportFormat Format = StatusReportFormat.PowerPoint)
 {
+    /// <summary>
+    /// The format a new draft comes with: the one of the last report, the PowerPoint at the first one, and the
+    /// PowerPoint where the storage does not convert into PDF.
+    /// </summary>
+    public static StatusReportFormat DraftFormatOf(StatusReportFormat? last, bool convertsToPdf) =>
+        convertsToPdf && last is { } format ? format : StatusReportFormat.PowerPoint;
+
     /// <returns>The form, or the fields refused.</returns>
     public static (StatusReportForm? Form, IReadOnlyList<StatusReportField> Invalid) Of(
         string? summary,
@@ -82,7 +101,9 @@ public sealed record StatusReportForm(StatusReportTexts Texts, IReadOnlyList<Sta
         string? clientNeeds,
         IReadOnlyList<StatusReportRiskInput>? risks,
         bool showHours,
-        IReadOnlySet<int> openTickets)
+        IReadOnlySet<int> openTickets,
+        StatusReportFormat? format = null,
+        bool convertsToPdf = false)
     {
         ArgumentNullException.ThrowIfNull(openTickets);
         var invalid = new List<StatusReportField>();
@@ -116,13 +137,19 @@ public sealed record StatusReportForm(StatusReportTexts Texts, IReadOnlyList<Sta
             invalid.Add(StatusReportField.Risks);
         }
 
-        return invalid.Count > 0 ? (null, invalid) : (new StatusReportForm(texts, accepted, showHours), []);
+        var chosenFormat = format ?? StatusReportFormat.PowerPoint;
+        if (!Enum.IsDefined(chosenFormat) || (chosenFormat == StatusReportFormat.Pdf && !convertsToPdf))
+        {
+            invalid.Add(StatusReportField.Format);
+        }
+
+        return invalid.Count > 0 ? (null, invalid) : (new StatusReportForm(texts, accepted, showHours, chosenFormat), []);
     }
 }
 
 /// <summary>
-/// What the last status report of a project said (ADR-0165), so the next draft comes filled in: the four texts and the
-/// risks, with when and by whom. One per project, replaced at each report; out of the audit, because the document of
+/// What the last status report of a project said (ADR-0165), so the next draft comes filled in: the four texts, the
+/// risks and the format, with when and by whom. One per project, replaced at each report; out of the audit, because the document of
 /// the report is in it.
 /// </summary>
 public sealed class StatusReportNotes : Entity
@@ -153,6 +180,9 @@ public sealed class StatusReportNotes : Entity
 
     public string ClientNeeds { get; private set; }
 
+    /// <summary>The format of the last report; the PowerPoint for the ones generated before there was the PDF.</summary>
+    public StatusReportFormat Format { get; private set; } = StatusReportFormat.PowerPoint;
+
     /// <summary>When the last report was generated, in UTC.</summary>
     public DateTime GeneratedAt { get; private set; }
 
@@ -171,6 +201,7 @@ public sealed class StatusReportNotes : Entity
         Focus = form.Texts.Focus;
         NextSteps = form.Texts.NextSteps;
         ClientNeeds = form.Texts.ClientNeeds;
+        Format = form.Format;
         GeneratedAt = now;
         GeneratedById = userId;
         _risks.Clear();

@@ -14,10 +14,11 @@ namespace GerenWare.Files.Infrastructure;
 /// (ADR-0030, ADR-0120). The root is a folder of a document library of the site, created when missing; folders and
 /// files are known by the ids of SharePoint, which do not change when someone renames them, and the versions are the
 /// ones SharePoint keeps. The application writes only in that site (Sites.Selected) and never touches permissions. An
-/// id outside the root counts as not found, so nothing outside is ever opened or removed.
+/// id outside the root counts as not found, so nothing outside is ever opened or removed. It also converts a stored
+/// file into PDF, through the same Graph (ADR-0165).
 /// </summary>
 internal sealed class SharePointFileStorage(IHttpClientFactory clients, IGraphTokens tokens, SharePointStorageOptions options)
-    : IFileStorage
+    : IFileStorage, IFileConversion
 {
     /// <summary>The name of the <see cref="HttpClient"/> of the storage.</summary>
     public const string ClientName = "sharepoint";
@@ -184,6 +185,44 @@ internal sealed class SharePointFileStorage(IHttpClientFactory clients, IGraphTo
         await EnsureSuccessAsync(response, "open a file", cancellationToken);
         var stream = new ResponseStream(response, await response.Content.ReadAsStreamAsync(cancellationToken));
         return new FileDownload(stream, item.Name, ContentTypes.Of(item.Name), size, versionId);
+    }
+
+    public bool ConvertsToPdf => true;
+
+    public async Task<FileDownload?> ToPdfAsync(string fileId, CancellationToken cancellationToken)
+    {
+        var root = await RootAsync(cancellationToken);
+        if (await ItemInsideAsync(root, fileId, cancellationToken) is not { File: not null } item)
+        {
+            return null;
+        }
+
+        // Graph converts files of up to 2 MB; a larger one is not even sent.
+        if (item.Size > FileConversion.MaxBytes)
+        {
+            throw new FileConversionException(FileConversionFailure.TooLarge);
+        }
+
+        // Graph answers with the address of the PDF, which the client follows without the token. The address is good
+        // only for a few minutes, so the PDF is read now.
+        using var response = await SendAsync(
+            () => new HttpRequestMessage(HttpMethod.Get, $"drives/{root.DriveId}/items/{item.Id}/content?format=pdf"),
+            cancellationToken);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new FileConversionException(
+                FileConversionFailure.Refused, (int)response.StatusCode, await CodeOfAsync(response, cancellationToken));
+        }
+
+        var pdf = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+        // The PDF is not stored, so it has no version of its own.
+        return new FileDownload(
+            new MemoryStream(pdf, writable: false), Path.ChangeExtension(item.Name, ".pdf"), "application/pdf", pdf.Length, string.Empty);
     }
 
     public async Task<bool> DeleteFileAsync(string fileId, CancellationToken cancellationToken)
@@ -430,19 +469,24 @@ internal sealed class SharePointFileStorage(IHttpClientFactory clients, IGraphTo
             return;
         }
 
-        string? code = null;
-        try
-        {
-            code = (await response.Content.ReadFromJsonAsync<GraphFailure>(JsonSerializerOptions.Web, cancellationToken))?.Error?.Code;
-        }
-        catch (JsonException)
-        {
-        }
-
+        var code = await CodeOfAsync(response, cancellationToken);
         throw new HttpRequestException(
             $"Microsoft Graph answered {(int)response.StatusCode} ({code ?? "no code"}) to {action} in the SharePoint storage.",
             null,
             response.StatusCode);
+    }
+
+    /// <summary>The code of a failure of Graph ("error": { "code" }), when the answer has one.</summary>
+    private static async Task<string?> CodeOfAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return (await response.Content.ReadFromJsonAsync<GraphFailure>(JsonSerializerOptions.Web, cancellationToken))?.Error?.Code;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     /// <summary>The site of an address: "sites/{host}:/{path}", or "sites/{host}" for the root site.</summary>

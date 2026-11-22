@@ -480,13 +480,47 @@ internal static class DocumentChanges
 /// the project, because who generates was checked by the caller.
 /// </summary>
 public sealed class StatusReportDocuments(
-    ProjectFolders projectFolders, IFolderStore folders, IDocumentStore documents, IFileStorage files, IProjectAccess projects, TimeProvider clock)
+    ProjectFolders projectFolders,
+    IFolderStore folders,
+    IDocumentStore documents,
+    IFileStorage files,
+    IFileConversion conversion,
+    IProjectAccess projects,
+    TimeProvider clock)
     : IStatusReportDocuments
 {
     public async Task<SavedStatusReport> SaveAsync(
         Guid projectId, string name, Stream content, Guid userId, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(content);
+        var (project, folder, fileName) = await PlaceOfAsync(projectId, name, userId, cancellationToken);
+        return await KeepAsync(project, folder, fileName, content, userId, cancellationToken);
+    }
+
+    public async Task<SavedStatusReport> SavePdfAsync(
+        Guid projectId, string name, Stream powerPoint, Guid userId, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(powerPoint);
+        var (project, folder, fileName) = await PlaceOfAsync(projectId, name, userId, cancellationToken);
+        // The PowerPoint is stored only to be converted, with a name no document has, and is never a document.
+        var draft = await projectFolders.UploadAsync(
+            folder, project, $"{Guid.CreateVersion7():N}.pptx", powerPoint, SameNameAction.KeepBoth, cancellationToken);
+        try
+        {
+            await using var pdf = await conversion.ToPdfAsync(draft.Id, cancellationToken)
+                ?? throw new InvalidOperationException("The PowerPoint of the status report left the storage before its conversion.");
+            return await KeepAsync(project, folder, fileName, pdf.Content, userId, cancellationToken);
+        }
+        finally
+        {
+            await RemoveDraftAsync(draft.Id);
+        }
+    }
+
+    /// <summary>The project, its folder of the status reports, made for the project when it does not have it, and the name.</summary>
+    private async Task<(ProjectAccess Project, DocumentFolder Folder, string FileName)> PlaceOfAsync(
+        Guid projectId, string name, Guid userId, CancellationToken cancellationToken)
+    {
         var project = await projects.FindAsync(projectId, userId, isAdministrator: true, cancellationToken)
             ?? throw new InvalidOperationException("The project of the status report does not exist.");
         var fileName = Document.NameOf(name) ?? throw new ArgumentException("The name of the status report is not valid.", nameof(name));
@@ -500,13 +534,20 @@ public sealed class StatusReportDocuments(
             folders.AddFolders([folder]);
         }
 
+        return (project, folder, fileName);
+    }
+
+    /// <summary>The file as a new document of the folder, or as a new version of the document with the same name.</summary>
+    private async Task<SavedStatusReport> KeepAsync(
+        ProjectAccess project, DocumentFolder folder, string fileName, Stream content, Guid userId, CancellationToken cancellationToken)
+    {
         var stored = await projectFolders.UploadAsync(folder, project, fileName, content, SameNameAction.NewVersion, cancellationToken);
         var now = clock.GetUtcNow().UtcDateTime;
         var document = await documents.FindByFileAsync(folder.Id, stored.Id, cancellationToken);
         var isNew = document is null;
         if (document is null)
         {
-            document = Document.Upload(projectId, folder.Id, stored.Name, stored.Id, stored.VersionId, stored.Size, userId, now);
+            document = Document.Upload(project.Id, folder.Id, stored.Name, stored.Id, stored.VersionId, stored.Size, userId, now);
             documents.Add(document);
         }
         else
@@ -530,5 +571,20 @@ public sealed class StatusReportDocuments(
         }
 
         return new SavedStatusReport(document.Id, folder.Id, folder.Name, document.Name, document.Version);
+    }
+
+    /// <summary>
+    /// Removes the PowerPoint of a conversion. A failure leaves only a file no document points to, so it never undoes
+    /// the report already kept.
+    /// </summary>
+    private async Task RemoveDraftAsync(string fileId)
+    {
+        try
+        {
+            await files.DeleteFileAsync(fileId, CancellationToken.None);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or IOException or TaskCanceledException)
+        {
+        }
     }
 }
