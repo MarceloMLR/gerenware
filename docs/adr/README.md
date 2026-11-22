@@ -227,6 +227,7 @@ Regras:
 | [0162](0162-recursos-do-azure-recriados-com-o-prefixo-gerenware.md) | Recursos do Azure recriados com o prefixo gerenware | aceita | 2026-11-17 |
 | [0163](0163-repositorio-gerenware.md) | Repositório renomeado para gerenware | aceita | 2026-11-17 |
 | [0164](0164-o-que-ameaca-o-cronograma.md) | O que ameaça o cronograma: chamados ligados a tarefas e marcos, e a projeção do atraso | aceita | 2026-11-19 |
-| [0165](0165-relatorio-de-status.md) | Relatório de status em PowerPoint e PDF, num modelo que a empresa edita | aceita | 2026-11-19 |
+| [0165](0165-relatorio-de-status.md) | Relatório de status em PowerPoint e PDF, num modelo que a empresa edita | aceita (visual do modelo padrão completado pelo ADR-0168) | 2026-11-19 |
 | [0166](0166-horas-no-relatorio-de-status.md) | Horas do projeto no relatório de status | aceita | 2026-11-19 |
 | [0167](0167-dia-da-conclusao-informado.md) | Dia da conclusão e do marco atingido informado por quem conclui | aceita | 2026-11-20 |
+| [0168](0168-visual-do-relatorio-de-status.md) | Visual do modelo padrão do relatório de status, com a marca e as cores da instalação | aceita | 2026-11-22 |
