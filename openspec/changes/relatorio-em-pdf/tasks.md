@@ -33,7 +33,7 @@
   - `CLAUDE.md`, nas seções do mapa e da tela;
   - `docs/glossario.md`;
   - `openspec validate --all --strict` limpo.
-- [ ] 6.2 Verificação: `dotnet build -warnaserror`, `dotnet test`, `dotnet format` e os testes do frontend
+- [x] 6.2 Verificação: `dotnet build -warnaserror`, `dotnet test`, `dotnet format` e os testes do frontend
 
 ## Workflow follow-up
 
