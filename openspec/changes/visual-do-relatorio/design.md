@@ -34,13 +34,15 @@ Comum a todos:
 
 | Slide | Conteúdo |
 | --- | --- |
-| Status do projeto | Na faixa: o quadro do cliente (1,35 por 0,92), "Relatório de status · 20 de novembro de 2026", o nome do projeto em 28 pt, "ERP-FIN · Gerente: … · Cliente: …", o logo da instalação e a etiqueta da situação. Embaixo, os quatro cartões (Andamento com a barra e a marca do previsto; Prazo final com a etiqueta do desvio; Próximo marco com a etiqueta do dia e do atraso; Chamados em aberto com a etiqueta dos vencidos), o cartão do resumo (7,55 de largura) e o dos próximos marcos (até 5 blocos), e a faixa escura do fim previsto com a sequência das fases (até 5 blocos lado a lado) |
+| Status do projeto | Na faixa: o quadro do cliente (1,35 por 0,92), "Relatório de status · 20 de novembro de 2026", o nome do projeto em 28 pt, "ERP-FIN · Gerente: … · Cliente: …", o logo da instalação e a etiqueta da situação. Embaixo, os quatro cartões (Andamento com a barra e a marca do previsto; Prazo final com a etiqueta do desvio; Próximo marco com a etiqueta do dia e do atraso; Chamados em aberto com a etiqueta dos vencidos), o cartão do resumo (6,9 de largura) e o dos próximos marcos (4,98 de largura, até 5 blocos), e a faixa escura do fim previsto com a sequência das fases (até 5 blocos lado a lado) |
 | Cronograma | O cartão das fases (até 10 blocos: nome, período, barra com a marca do previsto e o percentual) e o das tarefas atrasadas (até 5 blocos: nome, etiqueta do atraso e o que empurra), com a quantidade numa etiqueta |
 | Próximos passos | Três cartões, cada um com o ícone num círculo do tom de destaque, o título, um filete e o texto |
-| Risco | "Risco 1 de 2" na faixa; o cartão do chamado (o número e o título, a etiqueta da classificação, os quadros do status, da prioridade e do fornecedor, e o ponto de atenção num quadro do tom de aviso com o ícone) e o dos marcos que dependem dele (até 5 blocos) |
+| Risco | "Risco 1 de 2" na faixa; o cartão do chamado (o número e o título, a etiqueta da classificação, os quadros do status e da prioridade, cada um com a etiqueta, e o do fornecedor, e o ponto de atenção num quadro do tom de aviso com o ícone) e o dos marcos que dependem dele (até 5 blocos) |
 | Horas do projeto | Um cartão com os quatro números em dois por dois, a etiqueta do estado e a barra do consumo, e o cartão das horas por tarefa (até 15 blocos: nome, barra das apontadas contra as previstas, previstas e apontadas) |
 
-O slide das horas sai do desenho aprovado: com até 15 tarefas, os números vão para um cartão à esquerda, e as tarefas ganham a altura toda à direita.
+O slide das horas sai do desenho aprovado: com até 15 tarefas, os números vão para um cartão à esquerda, e as tarefas ganham a altura toda à direita. No slide 1, o cartão do resumo ficou mais estreito que no desenho (6,9 no lugar de 7,55), para o nome do marco caber com o "quando" na mesma linha.
+
+Cada slide tem o nome no próprio arquivo (o nome do slide do PowerPoint): "Status do projeto", "Cronograma", "Próximos passos", "Risco" e "Horas do projeto". O título na faixa do slide 1 é o nome do projeto, e o do risco, "Risco 1 de 2".
 
 ### D2. As cores
 
@@ -91,8 +93,10 @@ Os ícones de cada valor são os das telas:
 | Status do chamado | `TicketTags.tsx` |
 | Prazo, próximo marco e vencidos | `DueDate.tsx` |
 | Estado das horas | `projectHours.ts` |
+| Prioridade do chamado | `TicketTags.tsx` (as setas, neutra até a média, aviso na alta e perigo na crítica) |
+| Classificação do risco | Sem tela: alta em perigo com o ícone de erro, média em aviso com o de atenção, baixa neutra com o de informação |
 
-Eles ficam em `Infrastructure/StatusReports/Icons`, com os caminhos do `@mui/icons-material` (MIT).
+Eles ficam em `Infrastructure/StatusReports/Icons`, com os caminhos do `@mui/icons-material` (MIT), embutidos na montagem, e o gerador troca a cor no texto do SVG. Uma etiqueta sem valor fica neutra, sem ícone, e uma etiqueta que ficou sem texto sai com o ícone (o próximo marco de um projeto sem marcos).
 
 ### D5. Alinhamento das etiquetas
 
@@ -102,16 +106,18 @@ O modelo desenha o ícone centrado na altura das minúsculas do texto, e o texto
 
 O `InstallationBrand` (contrato do `Administration`) passa a entregar o logo para fundo escuro. O logo da instalação na faixa, nesta ordem:
 1. O logo para fundo escuro.
-2. Sem logo nenhum e com o nome do produto (`Product.Name`), o logo da GerenWare para fundo escuro: o SVG de `docs/marca/`, copiado, com o PNG de 128 px de reserva. Um teste compara as cópias com os originais.
+2. Sem logo nenhum e com o nome do produto (`Product.Name`), o logo da GerenWare para fundo escuro: o SVG de `docs/marca/`, embutido direto do arquivo da marca (sem cópia), com o PNG de 256 px de reserva. Um teste confere que são os arquivos da marca.
 3. O logo claro, no quadro `logo.instalacao.quadro`, que o gerador só mantém nesse caso.
 4. O nome escrito em branco.
 
 O logo do cliente fica sempre no quadro branco do slide 1, ou o nome dele.
 
+O logo é encaixado na forma dele e alinhado como o texto dela (o da instalação, à direita). No quadro, o gerador ajusta a largura do quadro ao logo, com a mesma folga dos lados.
+
 ### D7. Sombra, faixa e formas
 
 - **Cartões:** retângulos de canto `radius-lg` (10 px), borda `border` e a sombra externa do token `shadow-menu` (4 px para baixo, 12 px de desfoque, `#1C1F24` com 12%).
-- **Faixa:** um `gradFill` linear e o brilho em `signin-glow`, num degradê radial com transparência.
+- **Faixa:** um `gradFill` linear e o brilho em `signin-glow`: um retângulo na metade esquerda da faixa, num degradê radial com transparência a partir do canto de baixo.
 - **Anéis:** o preset `arc`, com os ângulos calculados para cada anel ficar dentro da faixa.
 - **Pontos:** círculos pequenos.
 
@@ -119,7 +125,7 @@ Tudo em formas nativas, sem imagem, para a empresa editar.
 
 ### D8. Textos longos
 
-O resumo e os textos dos próximos passos têm até 1.000 caracteres (Status-4). A caixa de texto vai com o ajuste "Reduzir o texto ao transbordar" (`normAutofit`). O gerador grava a escala da fonte pela estimativa das linhas que o texto ocupa na largura da caixa, de 100% a 80%, porque o PowerPoint só recalcula a escala quando o texto é editado.
+O resumo e os textos dos próximos passos têm até 1.000 caracteres (Status-4). A caixa de texto vai com o ajuste "Reduzir o texto ao transbordar" (`normAutofit`). O gerador grava a escala da fonte pela estimativa das linhas que o texto ocupa na largura da caixa, de 100% a 80% em passos de 2,5%, porque o PowerPoint só recalcula a escala quando o texto é editado. A estimativa é cuidadosa: meio corpo por caractere e a linha cheia a 92%. O LibreOffice recalcula a escala ele mesmo.
 
 Os nomes nos blocos são cortados no tamanho que cabe numa linha, com "…":
 
@@ -127,9 +133,9 @@ Os nomes nos blocos são cortados no tamanho que cabe numa linha, com "…":
 | --- | --- |
 | Fase | 38 |
 | Fase na faixa | 22 |
-| Marco | 30 |
+| Marco | 26 |
 | Tarefa atrasada | 45 |
-| Tarefa nas horas | 60 |
+| Tarefa nas horas | 55 |
 
 ### D9. Os dados novos
 
@@ -137,6 +143,9 @@ Os nomes nos blocos são cortados no tamanho que cabe numa linha, com "…":
 | --- | --- |
 | `relatorio.dataExtensa` | "20 de novembro de 2026" |
 | `andamento.previsto` | "previsto 60%" (antes, "Previsto para hoje: 60%"), com a marca `marca.andamento` |
+| `prazo.desvio` e `prazo.linhaDeBase` | "1 dia útil depois da linha de base" na etiqueta, e "linha de base: 11/12/2026" na faixa do fim previsto |
+| `marco.proximo.quando` | "13/11 · 4 dias úteis de atraso", com o dia curto |
+| `atraso.empurra` | "Empurra o marco Homologação em 2 dias úteis", ou "Não muda nenhum marco nem o fim do projeto" |
 | Lista `etapa` | A sequência das fases: até 5, da primeira em aberto em diante. Com menos de 5 dali em diante, as anteriores completam; com todas concluídas, as 5 últimas. Cada uma com o nome, o período curto ("03/11 a 13/11"), o percentual e a barra no tom do estado: concluída em sucesso, em andamento em informação, sem começar neutra |
 | `marco.diaCurto` | "26/11", na etiqueta `etiqueta.marco` (perigo no atrasado, destaque nos outros) |
 | `risco.ordem`, `riscos.total` | "Risco 1 de 2" |
