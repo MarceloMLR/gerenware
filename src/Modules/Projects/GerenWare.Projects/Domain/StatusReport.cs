@@ -38,6 +38,31 @@ public static class StatusReportLimits
     public const int TaskHours = 15;
 
     public const int RiskMilestones = 5;
+
+    /// <summary>The phases of the sequence on the first slide (ADR-0168).</summary>
+    public const int Sequence = 5;
+}
+
+/// <summary>The phases of the status report (ADR-0168), in one place.</summary>
+public static class StatusReportPhases
+{
+    /// <summary>
+    /// The sequence of the phases on the first slide: up to the limit, from the first phase not done on. With fewer
+    /// than the limit from there on, the ones before complete it; with all done, the last ones.
+    /// </summary>
+    public static IReadOnlyList<T> SequenceOf<T>(IReadOnlyList<T> phases, Func<T, bool> isDone, int limit = StatusReportLimits.Sequence)
+    {
+        ArgumentNullException.ThrowIfNull(phases);
+        ArgumentNullException.ThrowIfNull(isDone);
+        var firstOpen = 0;
+        while (firstOpen < phases.Count && isDone(phases[firstOpen]))
+        {
+            firstOpen++;
+        }
+
+        var start = Math.Clamp(firstOpen, 0, Math.Max(0, phases.Count - limit));
+        return [.. phases.Skip(start).Take(limit)];
+    }
 }
 
 /// <summary>A field of the status report the person fills in, when it is refused (400).</summary>

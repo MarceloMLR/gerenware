@@ -22,10 +22,11 @@ public interface IStatusReportStore
 public sealed record StatusReportImage(byte[] Content, string ContentType);
 
 /// <summary>
-/// The installation in the report (ADR-0146, ADR-0165): its name, its logo for light backgrounds and its main and
-/// secondary colors, null when the Administrator chose none.
+/// The installation in the report (ADR-0146, ADR-0165, ADR-0168): its name, its logos for light and for dark
+/// backgrounds and its main and secondary colors, null when the Administrator chose none.
 /// </summary>
-public sealed record StatusReportBrand(string Name, StatusReportImage? Logo, string? MainColor, string? SecondaryColor);
+public sealed record StatusReportBrand(
+    string Name, StatusReportImage? Logo, string? MainColor, string? SecondaryColor, StatusReportImage? DarkLogo = null);
 
 /// <summary>A phase with dates of the report: its period, its progress and how much should be done by today, if anything.</summary>
 public sealed record StatusReportPhase(string Name, DateOnly Start, DateOnly End, int Progress, int? Planned);
@@ -69,9 +70,9 @@ public sealed record StatusReportList<T>(IReadOnlyList<T> Items, int More)
 
 /// <summary>
 /// Everything that goes in a status report (ADR-0165, ADR-0166), on the day of the installation: the installation, the
-/// client, the project and its managers; the progress, the deadline, the phases, the milestones ahead and the late
-/// tasks, by the rules of the overview (ADR-0073); the open and overdue tickets; the texts and the risks; and the hours,
-/// only with "Mostrar horas".
+/// client, the project and its managers; the progress, the deadline, the phases and their sequence (ADR-0168), the
+/// milestones ahead and the late tasks, by the rules of the overview (ADR-0073); the open and overdue tickets; the texts
+/// and the risks; and the hours, only with "Mostrar horas".
 /// </summary>
 public sealed record StatusReportData(
     DateOnly Today,
@@ -85,6 +86,7 @@ public sealed record StatusReportData(
     OverviewProgress? Progress,
     OverviewDeadline? Deadline,
     StatusReportList<StatusReportPhase> Phases,
+    IReadOnlyList<StatusReportPhase> Sequence,
     IReadOnlyList<StatusReportMilestone> Milestones,
     StatusReportList<StatusReportLateTask> LateTasks,
     int OpenTickets,
@@ -347,13 +349,22 @@ public sealed class GenerateStatusReport(
         }
 
         var byNumber = open.ToDictionary(ticket => ticket.Number);
+        List<StatusReportPhase> phases = [.. figures.Phases
+            .Where(phase => phase.Start is not null)
+            .Select(phase => new StatusReportPhase(
+                phase.Phase.Name,
+                phase.Start!.Value,
+                phase.End!.Value,
+                phase.Progress,
+                SchedulePlan.PlannedProgress(phase.Items, schedule.Baseline, view.Today, days)))];
         return new StatusReportData(
             view.Today,
             new StatusReportBrand(
                 installation.Name,
                 await ImageOfAsync(installation.LogoFileId, installation.LogoContentType, cancellationToken),
                 installation.MainColor,
-                installation.SecondaryColor),
+                installation.SecondaryColor,
+                await ImageOfAsync(installation.DarkLogoFileId, installation.DarkLogoContentType, cancellationToken)),
             project.Code,
             project.Name,
             project.Status,
@@ -362,16 +373,8 @@ public sealed class GenerateStatusReport(
             [.. managers.Select(member => PeopleNames.NameOf(names, member.UserId))],
             view.Progress,
             view.Deadline,
-            StatusReportList<StatusReportPhase>.Of(
-                figures.Phases
-                    .Where(phase => phase.Start is not null)
-                    .Select(phase => new StatusReportPhase(
-                        phase.Phase.Name,
-                        phase.Start!.Value,
-                        phase.End!.Value,
-                        phase.Progress,
-                        SchedulePlan.PlannedProgress(phase.Items, schedule.Baseline, view.Today, days))),
-                StatusReportLimits.Phases),
+            StatusReportList<StatusReportPhase>.Of(phases, StatusReportLimits.Phases),
+            StatusReportPhases.SequenceOf(phases, phase => phase.Progress >= 100),
             [.. OpenMilestones.Of(schedule, view.Today, days).Take(StatusReportLimits.Milestones).Select(MilestoneOf)],
             StatusReportList<StatusReportLateTask>.Of(
                 view.LateTasks.Select(task => new StatusReportLateTask(
