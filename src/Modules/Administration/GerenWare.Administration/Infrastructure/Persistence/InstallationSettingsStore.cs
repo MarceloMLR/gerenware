@@ -30,6 +30,12 @@ internal sealed class InstallationSettingsStore(AdministrationDbContext db)
         db.InstallationSettings.AsNoTracking()
             .Where(settings => settings.Id == InstallationSettings.SingleId)
             .Select(settings => new InstallationBrand(
-                settings.Name, settings.LogoFileId, settings.LogoContentType, settings.MainColor, settings.SecondaryColor))
+                settings.Name,
+                settings.LogoFileId,
+                settings.LogoContentType,
+                settings.MainColor,
+                settings.SecondaryColor,
+                settings.DarkLogoFileId,
+                settings.DarkLogoContentType))
             .SingleAsync(cancellationToken);
 }
