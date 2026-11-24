@@ -33,7 +33,7 @@
   - `CLAUDE.md`, na seção do mapa;
   - `docs/glossario.md`: bloco, marca e etiqueta do modelo;
   - `openspec validate --all --strict` limpo.
-- [ ] 5.3 Verificação: `dotnet build -warnaserror`, `dotnet test` e `dotnet format`
+- [x] 5.3 Verificação: `dotnet build -warnaserror`, `dotnet test` e `dotnet format`
 
 ## Workflow follow-up
 
