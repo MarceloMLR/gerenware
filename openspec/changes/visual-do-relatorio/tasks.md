@@ -1,6 +1,6 @@
 ## 1. Roadmap
 
-- [ ] 1.1 A Status-4.1 (`visual-do-relatorio`) no `docs/roadmap.md`, "Em andamento", com a contagem do grupo 18
+- [x] 1.1 A Status-4.1 (`visual-do-relatorio`) no `docs/roadmap.md`, "Em andamento", com a contagem do grupo 18
 
 ## 2. As cores, os ícones e os logos
 

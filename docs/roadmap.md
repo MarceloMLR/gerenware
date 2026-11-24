@@ -70,8 +70,8 @@ As 50 changes do OpenSpec que constroem a v1, em 10 grupos, na ordem em que são
 | 15. Aprimoramento do Gantt 2 (v2) | 6 | 6 |
 | 16. Tarefas (v2) | 4 | 4 |
 | 17. Rebranding GerenWare (v2) | 9 | 9 |
-| 18. Status do projeto (v2) | 6 | 5 |
-| **Total** | **148** | **147** |
+| 18. Status do projeto (v2) | 7 | 5 |
+| **Total** | **149** | **147** |
 
 ## 1. Fundação
 
@@ -322,5 +322,6 @@ Referência: o status report de exemplo trazido por Marcelo em 19/11/2026, só p
 | Status-2 | `projecao-do-atraso` | O que uma tarefa atrasada empurra: a projeção das datas pelas dependências até os marcos e o fim do projeto, sem gravar nada, no detalhe da tarefa e em "Precisa de atenção" | 0020, 0051, 0073, 0137, 0140, 0164 | Concluída |
 | Status-3 | `fim-previsto-e-real` | O fim previsto, da linha de base, e o fim real, da conclusão, lado a lado na Lista, no Expandir e no Excel, como o MS Project, com o dia da conclusão informado por quem conclui | 0020, 0021, 0043, 0071, 0086, 0167 | Concluída |
 | Status-4 | `relatorio-de-status` | O relatório de status em PowerPoint, no modelo padrão com o logo e as cores da instalação e o logo do cliente, gerado pelo administrador e pelo gerente, com os textos do gerente, os riscos escolhidos e "Mostrar horas", guardado nos documentos do projeto | 0073, 0092, 0128, 0144, 0148, 0164, 0165, 0166 | Concluída |
+| Status-4.1 | `visual-do-relatorio` | O modelo padrão do relatório com o visual da marca: a faixa escura, os cartões com sombra, as etiquetas de status com ícone, as barras com a marca do previsto e a sequência das fases, com as cores e os logos da instalação, e os blocos repetidos, as barras, as marcas e as etiquetas no gerador, para o modelo da empresa | 0065, 0146, 0159, 0160, 0165, 0168 | PR aberto |
 | Status-5 | `relatorio-em-pdf` | O relatório também em PDF, convertido pelo Microsoft 365 do PowerPoint guardado no SharePoint, depois do teste da conversão com a permissão do aplicativo | 0030, 0120, 0165 | Concluída |
 | Status-6 | `modelo-do-relatorio` | O modelo da empresa: o administrador baixa o padrão e a lista dos campos, edita no PowerPoint, sobe e o sistema confere os campos antes de aceitar, com "Voltar ao padrão" | 0003, 0046, 0146, 0165 | Planejada |
