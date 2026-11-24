@@ -89,6 +89,8 @@ Marcelo roda no SSH do App Service do `dev` um script que só lê, entregue no c
 4. Escreve só o resultado, sem token.
 
 O resultado vai para este design e para a descrição do PR.
+
+Resultado: em 22/11/2026, Marcelo gerou pela tela, no `dev`, o relatório em PowerPoint e em PDF. A conversão pelo Graph funcionou com o `Sites.Selected`, sem permissão nova, e o ADR-0165 vale como está.
 - Se o Graph recusar com o `Sites.Selected`, a change para antes do merge. Um ADR novo substitui o ADR-0165 com a página de impressão (P3), e esta change é refeita por ele.
 - A aparência do PDF convertido só pode ser conferida no `dev` depois do merge, porque o `deploy-dev` publica só a `main`; o que precisar de ajuste vira a Status-5.1.
 
