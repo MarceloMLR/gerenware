@@ -23,22 +23,27 @@ public sealed class InstallationUseCaseTests(SqlServerFixture sqlServer)
         info.Should().Be(new InstallationInfo("GerenWare", "America/Sao_Paulo", new TimeOnly(7, 30), 90));
     }
 
-    // Spec: relatorio-de-status, requirement "Modelo padrão do relatório": the brand other modules read (ADR-0165).
+    // Spec: relatorio-de-status, requirement "Modelo padrão do relatório": the brand other modules read (ADR-0165, ADR-0168).
     [Fact]
-    public async Task Brand_GivesTheNameTheLightLogoAndTheColors()
+    public async Task Brand_GivesTheNameBothLogosAndTheColors()
     {
         await using var database = await AdministrationDatabase.CreateAsync(sqlServer);
         var none = await database.RunAsync<IInstallationBrand, InstallationBrand>(brand => brand.GetAsync(Cancellation));
         await RenameAsync(database, "Consultoria Fictícia");
         await ColorsAsync(database, "#0F766E", "#E6F4ED", null);
         (await SendAsync(database, "marca.png", Logos.Png())).Should().BeNull();
+        (await database.RunAsync<ReplaceInstallationLogo, LogoRefusal?>(replace =>
+            replace.ExecuteAsync("marca-escura.svg", new MemoryStream(Logos.Svg()), LogoTheme.Dark, Cancellation))).Should().BeNull();
 
         var brand = await database.RunAsync<IInstallationBrand, InstallationBrand>(get => get.GetAsync(Cancellation));
 
         none.Should().Be(new InstallationBrand("GerenWare", null, null, null, null));
+        var settings = await SettingsAsync(database);
         brand.Name.Should().Be("Consultoria Fictícia");
-        brand.LogoFileId.Should().Be((await SettingsAsync(database)).LogoFileId).And.NotBeNull();
-        (brand.LogoContentType, brand.MainColor, brand.SecondaryColor).Should().Be(("image/png", "#0F766E", "#E6F4ED"));
+        brand.LogoFileId.Should().Be(settings.LogoFileId).And.NotBeNull();
+        brand.DarkLogoFileId.Should().Be(settings.DarkLogoFileId).And.NotBeNull();
+        (brand.LogoContentType, brand.DarkLogoContentType, brand.MainColor, brand.SecondaryColor)
+            .Should().Be(("image/png", "image/svg+xml", "#0F766E", "#E6F4ED"));
     }
 
     [Fact(DisplayName = "Fuso padrão")]

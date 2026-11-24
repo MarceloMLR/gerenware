@@ -10,23 +10,33 @@ using P = DocumentFormat.OpenXml.Presentation;
 namespace GerenWare.Projects.Infrastructure.StatusReports;
 
 /// <summary>
-/// Fills a template of the status report with the values (ADR-0165), the same for the default template and, later, the
-/// one of the company:
+/// Fills a template of the status report with the values (ADR-0165, ADR-0168), the same for the default template and,
+/// later, the one of the company:
 /// <list type="bullet">
 /// <item>a field between double braces (<c>{{projeto.nome}}</c>) takes the value with the format of where it starts,
 /// also when the PowerPoint kept it in pieces, and a line break of the value makes a new paragraph;</item>
-/// <item>a row of a table with fields of a list (<see cref="StatusReportFields.Lists"/>) repeats for each item, and a
-/// table of an empty list leaves the slide;</item>
+/// <item>a group of shapes named <c>lista.{nome}</c> repeats for each item of the list, down by its height or, with
+/// <c>.lado</c>, to the side by its width, and a row of a table with fields of a list (<see cref="StatusReportFields.Lists"/>)
+/// repeats in the table; an empty list leaves the slide;</item>
 /// <item>the slide with fields of a risk repeats for each risk and leaves without risks, and the slide with fields of
 /// the hours leaves without "Mostrar horas";</item>
-/// <item>a shape of a logo becomes the picture, fitted in it, or keeps its text without the logo; a bar takes the
-/// share of its track; a tag takes the colors and the icon of its tone.</item>
+/// <item>a bar takes the share of its track, a mark goes to its point of the track or leaves, and a tag takes the
+/// colors and the icon of its tone, light or dark by the background the template drew it with; a tag left without
+/// text leaves;</item>
+/// <item>a shape of a logo becomes the picture, fitted in it and aligned as its text, in its frame only when it needs
+/// one, or keeps its text without the logo;</item>
+/// <item>a text that shrinks on overflow takes the scale its lines need, from 100% to 80%.</item>
 /// </list>
 /// </summary>
 internal static partial class StatusReportFiller
 {
     private const string SvgExtension = "{96DAC541-7B7A-43D3-8B79-37D633B846F1}";
     private const string SvgNamespace = "http://schemas.microsoft.com/office/drawing/2016/SVG/main";
+    private const string RelationshipNamespace = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+    private const long Emu = 914400;
+
+    /// <summary>The smallest scale of a text that shrinks on overflow (ADR-0168).</summary>
+    public const int MinimumFontScale = 80000;
 
     /// <summary>A PNG of one transparent pixel: the picture the format asks beside an SVG, for older versions.</summary>
     private static readonly byte[] EmptyPng = Convert.FromBase64String(
@@ -60,7 +70,7 @@ internal static partial class StatusReportFiller
                 }
                 else
                 {
-                    FillSlide(slide, new Lookup([values.Report]));
+                    FillSlide(slide, new Lookup([values.Report]), values.Colors);
                 }
             }
 
@@ -75,6 +85,55 @@ internal static partial class StatusReportFiller
         [.. root.Descendants<A.Paragraph>()
             .SelectMany(paragraph => Field().Matches(string.Concat(paragraph.Elements<A.Run>().Select(run => run.Text?.Text))))
             .Select(match => match.Groups[1].Value)];
+
+    /// <summary>
+    /// Puts an image in a picture of a slide: the PNG or the JPG, or the SVG with its PNG for the versions of the
+    /// PowerPoint that do not show SVG (a transparent pixel when it has none).
+    /// </summary>
+    public static void Embed(SlidePart part, A.Blip blip, ReportPicture picture)
+    {
+        ArgumentNullException.ThrowIfNull(part);
+        ArgumentNullException.ThrowIfNull(blip);
+        ArgumentNullException.ThrowIfNull(picture);
+        if (picture.ContentType == "image/svg+xml")
+        {
+            blip.Embed = Image(part, picture.Fallback ?? EmptyPng, ImagePartType.Png);
+            var svg = new OpenXmlUnknownElement("asvg", "svgBlip", SvgNamespace);
+            svg.SetAttribute(new OpenXmlAttribute("r", "embed", RelationshipNamespace, Image(part, picture.Content, ImagePartType.Svg)));
+            blip.Append(new A.BlipExtensionList(new A.BlipExtension(svg) { Uri = SvgExtension }));
+        }
+        else
+        {
+            blip.Embed = Image(part, picture.Content, picture.ContentType == "image/png" ? ImagePartType.Png : ImagePartType.Jpeg);
+        }
+    }
+
+    /// <summary>
+    /// The scale of the font a text needs to fit in its box, from 100% to the smallest, in steps of 2.5%, by an
+    /// estimate of its lines: half of the size for each character and the lines filled to 92%, as a careful guess.
+    /// </summary>
+    public static int FontScaleOf(IReadOnlyList<(int Characters, double Size, double Spacing)> paragraphs, double width, double height)
+    {
+        ArgumentNullException.ThrowIfNull(paragraphs);
+        for (var scale = 100000; scale > MinimumFontScale; scale -= 2500)
+        {
+            if (HeightOf(paragraphs, width, scale / 100000.0) <= height)
+            {
+                return scale;
+            }
+        }
+
+        return MinimumFontScale;
+    }
+
+    private static double HeightOf(IReadOnlyList<(int Characters, double Size, double Spacing)> paragraphs, double width, double scale) =>
+        paragraphs.Sum(paragraph =>
+        {
+            var size = paragraph.Size * scale / 72.0;
+            var perLine = Math.Max(1, Math.Floor(width / (size * 0.5) * 0.92));
+            var lines = Math.Max(1, Math.Ceiling(paragraph.Characters / perLine));
+            return lines * size * 1.2 * paragraph.Spacing;
+        });
 
     private static void FillRisks(PresentationPart presentation, P.SlideId slideId, SlidePart slide, StatusReportValues values)
     {
@@ -96,7 +155,7 @@ internal static partial class StatusReportFiller
 
         foreach (var (part, risk) in slides.Zip(values.Risks))
         {
-            FillSlide(part, new Lookup([risk, values.Report]));
+            FillSlide(part, new Lookup([risk, values.Report]), values.Colors);
         }
     }
 
@@ -129,38 +188,119 @@ internal static partial class StatusReportFiller
         presentation.DeletePart(slide);
     }
 
-    private static void FillSlide(SlidePart part, Lookup lookup)
+    private static void FillSlide(SlidePart part, Lookup lookup, ReportColors colors)
     {
         var slide = part.Slide!;
+        var blocks = FillBlocks(part, slide, lookup, colors);
         FillTables(slide, lookup);
-        foreach (var shape in slide.Descendants<P.Shape>().ToList())
+        Fill(part, slide, lookup, colors, blocks);
+        slide.Save();
+    }
+
+    /// <summary>Repeats each block for the items of its list, each filled with its item; the blocks filled.</summary>
+    private static HashSet<P.GroupShape> FillBlocks(SlidePart part, P.Slide slide, Lookup lookup, ReportColors colors)
+    {
+        var filled = new HashSet<P.GroupShape>();
+        foreach (var group in slide.Descendants<P.GroupShape>().ToList())
         {
-            var name = shape.NonVisualShapeProperties?.NonVisualDrawingProperties?.Name?.Value ?? string.Empty;
-            if (lookup.Tone(name) is { } tone)
+            var name = NameOf(group);
+            if (!name.StartsWith(StatusReportFields.Block, StringComparison.Ordinal) || group.Ancestors<P.GroupShape>().Any(filled.Contains))
             {
-                ColorTag(shape, tone);
+                continue;
             }
-            else if (name.EndsWith(".icone", StringComparison.Ordinal) && lookup.Tone(name[..^".icone".Length]) is { } iconTone)
+
+            var sideways = name.EndsWith(StatusReportFields.Sideways, StringComparison.Ordinal);
+            var list = name[StatusReportFields.Block.Length..^(sideways ? StatusReportFields.Sideways.Length : 0)];
+            var items = lookup.List(list);
+            if (items.Count == 0)
             {
-                ColorIcon(shape, iconTone);
+                group.Remove();
+                continue;
             }
-            else if (lookup.Bar(name) is { } share)
+
+            var pristine = (P.GroupShape)group.CloneNode(true);
+            var extents = group.GroupShapeProperties?.TransformGroup?.Extents;
+            var step = (sideways ? extents?.Cx?.Value : extents?.Cy?.Value) ?? 0;
+            var copies = new List<P.GroupShape> { group };
+            for (var index = 1; index < items.Count; index++)
             {
-                SizeBar(slide, shape, name, share);
+                var copy = (P.GroupShape)pristine.CloneNode(true);
+                if (copy.GroupShapeProperties?.TransformGroup?.Offset is { } offset)
+                {
+                    offset.X = offset.X!.Value + (sideways ? step * index : 0);
+                    offset.Y = offset.Y!.Value + (sideways ? 0 : step * index);
+                }
+
+                copies[^1].InsertAfterSelf(copy);
+                Renumber(slide, copy);
+                copies.Add(copy);
+            }
+
+            foreach (var (copy, item) in copies.Zip(items))
+            {
+                Fill(part, copy, lookup.With(item), colors, []);
+                filled.Add(copy);
             }
         }
 
-        FillText(slide, lookup);
-        foreach (var shape in slide.Descendants<P.Shape>().ToList())
+        return filled;
+    }
+
+    /// <summary>Gives the shapes of a copy new ids, after the largest of the slide, so the ids of the template stay.</summary>
+    private static void Renumber(P.Slide slide, OpenXmlElement copy)
+    {
+        var next = slide.Descendants<P.NonVisualDrawingProperties>().Max(properties => properties.Id?.Value ?? 0) + 1;
+        foreach (var properties in copy.Descendants<P.NonVisualDrawingProperties>())
         {
-            var name = shape.NonVisualShapeProperties?.NonVisualDrawingProperties?.Name?.Value ?? string.Empty;
+            properties.Id = next++;
+        }
+    }
+
+    /// <summary>Fills the shapes of a slide or a block, but the ones inside the blocks already filled.</summary>
+    private static void Fill(SlidePart part, OpenXmlElement root, Lookup lookup, ReportColors colors, HashSet<P.GroupShape> skip)
+    {
+        bool Outside(OpenXmlElement element) => !element.Ancestors<P.GroupShape>().Any(skip.Contains);
+
+        FillText(root, lookup);
+        foreach (var shape in root.Descendants<P.Shape>().Where(Outside).ToList())
+        {
+            var name = NameOf(shape);
+            if (shape.Parent is null)
+            {
+                continue;
+            }
+
+            if (name.StartsWith(StatusReportFields.Tag, StringComparison.Ordinal) && !name.EndsWith(".icone", StringComparison.Ordinal))
+            {
+                Tag(part, root, shape, name, lookup.Tag(name), colors);
+            }
+            else if (name.StartsWith(StatusReportFields.Mark, StringComparison.Ordinal))
+            {
+                PlaceMark(root, shape, name, lookup.Mark(name));
+            }
+            else if (lookup.Bar(name) is { } bar)
+            {
+                SizeBar(root, shape, name, bar, colors);
+            }
+        }
+
+        foreach (var shape in root.Descendants<P.Shape>().Where(Outside).ToList())
+        {
+            var name = NameOf(shape);
             if (lookup.Picture(name) is { } picture)
             {
-                Picture(part, shape, picture);
+                Picture(part, root, shape, name, picture);
+            }
+            else if (name.EndsWith(".quadro", StringComparison.Ordinal) && lookup.Picture(name[..^".quadro".Length]) is not { Framed: true })
+            {
+                shape.Remove();
             }
         }
 
-        slide.Save();
+        foreach (var shape in root.Descendants<P.Shape>().Where(Outside).ToList())
+        {
+            Scale(shape);
+        }
     }
 
     private static void FillTables(P.Slide slide, Lookup lookup)
@@ -352,32 +492,24 @@ internal static partial class StatusReportFiller
         }
     }
 
-    /// <summary>The colors of a tag of a state, from the design system: the background and the text (ADR-0065).</summary>
-    public static (string Background, string Text) ColorsOf(ReportTone tone)
+    /// <summary>
+    /// A tag of a state (ADR-0065): the colors of its tone, light or dark by the background the template drew it with,
+    /// and its icon, an SVG in the color of the text; a tag without an icon gives its place back to the text, and one
+    /// without a value is neutral. A tag without text leaves, with its icon.
+    /// </summary>
+    private static void Tag(SlidePart part, OpenXmlElement root, P.Shape shape, string name, ReportTag? tag, ReportColors colors)
     {
-        var tokens = ReportTokens.Default;
-        var name = tone switch
+        var icon = ShapeNamed(root, StatusReportFields.IconOf(name));
+        if (string.IsNullOrWhiteSpace(string.Concat(shape.Descendants<A.Text>().Select(text => text.Text))))
         {
-            ReportTone.Danger => "danger",
-            ReportTone.Warning => "warning",
-            ReportTone.Success => "success",
-            _ => "neutral",
-        };
-        return (tokens.Color($"status-{name}-bg"), tokens.Color($"status-{name}-text"));
-    }
+            shape.Remove();
+            icon?.Remove();
+            return;
+        }
 
-    /// <summary>The icon of a tone, so a state is never told by the color alone.</summary>
-    public static A.ShapeTypeValues IconOf(ReportTone tone) => tone switch
-    {
-        ReportTone.Danger => A.ShapeTypeValues.Triangle,
-        ReportTone.Warning => A.ShapeTypeValues.Diamond,
-        ReportTone.Success => A.ShapeTypeValues.Ellipse,
-        _ => A.ShapeTypeValues.Donut,
-    };
-
-    private static void ColorTag(P.Shape shape, ReportTone tone)
-    {
-        var (background, text) = ColorsOf(tone);
+        tag ??= new ReportTag(ReportTone.Neutral);
+        var dark = FillOf(shape) is { } fill && ReportColors.IsDark(fill);
+        var (background, text) = colors.TagOf(tag.Tone, dark);
         SetFill(shape, background);
         foreach (var run in shape.Descendants<A.Run>())
         {
@@ -386,26 +518,84 @@ internal static partial class StatusReportFiller
             properties.RemoveAllChildren<A.NoFill>();
             properties.PrependChild(new A.SolidFill(new A.RgbColorModelHex { Val = text }));
         }
-    }
 
-    private static void ColorIcon(P.Shape shape, ReportTone tone)
-    {
-        SetFill(shape, ColorsOf(tone).Text);
-        if (shape.ShapeProperties?.GetFirstChild<A.PresetGeometry>() is { } geometry)
+        if (icon is null)
         {
-            geometry.Preset = IconOf(tone);
+            return;
+        }
+
+        if (tag.Icon is { } chosen)
+        {
+            Picture(part, root, icon, StatusReportFields.IconOf(name), ReportImages.Icon(chosen, text));
+        }
+        else
+        {
+            icon.Remove();
+            if (shape.TextBody?.BodyProperties is { } body)
+            {
+                body.LeftInset = body.RightInset?.Value ?? 0;
+            }
         }
     }
+
+    /// <summary>A bar as wide as the share of its track; with a tone, in the color of the charts, light or dark by the track.</summary>
+    private static void SizeBar(OpenXmlElement root, P.Shape bar, string name, ReportBar value, ReportColors colors)
+    {
+        var track = ShapeNamed(root, StatusReportFields.TrackOf(name)) ?? ShapeNamed(bar.Ancestors<P.Slide>().First(), StatusReportFields.TrackOf(name));
+        var width = track?.ShapeProperties?.Transform2D?.Extents?.Cx?.Value;
+        if (width is null || bar.ShapeProperties?.Transform2D?.Extents is not { } extents)
+        {
+            return;
+        }
+
+        var share = Math.Clamp(value.Share, 0m, 1m);
+        if (share == 0)
+        {
+            bar.Remove();
+            return;
+        }
+
+        extents.Cx = (long)Math.Round(width.Value * share, MidpointRounding.AwayFromZero);
+        if (value.Tone is { } tone)
+        {
+            SetFill(bar, colors.GraphOf(tone, FillOf(track!) is { } fill && ReportColors.IsDark(fill)));
+        }
+    }
+
+    /// <summary>A mark at the point of the track of its bar the value gives; without a value, it leaves.</summary>
+    private static void PlaceMark(OpenXmlElement root, P.Shape mark, string name, decimal? share)
+    {
+        var trackName = StatusReportFields.TrackOf(StatusReportFields.BarOfMark(name));
+        var track = ShapeNamed(root, trackName) ?? ShapeNamed(mark.Ancestors<P.Slide>().First(), trackName);
+        if (share is null || track?.ShapeProperties?.Transform2D is not { Offset: { } start, Extents: { } length }
+            || mark.ShapeProperties?.Transform2D is not { Offset: { } offset, Extents: { } size })
+        {
+            mark.Remove();
+            return;
+        }
+
+        offset.X = start.X!.Value + (long)Math.Round(length.Cx!.Value * Math.Clamp(share.Value, 0m, 1m), MidpointRounding.AwayFromZero) - (size.Cx!.Value / 2);
+    }
+
+    /// <summary>The color of the solid fill of a shape, when it has one.</summary>
+    private static string? FillOf(P.Shape shape) =>
+        shape.ShapeProperties?.GetFirstChild<A.SolidFill>()?.RgbColorModelHex?.Val?.Value
+        ?? shape.ShapeProperties?.GetFirstChild<A.GradientFill>()?.Descendants<A.RgbColorModelHex>().FirstOrDefault()?.Val?.Value;
 
     private static void SetFill(P.Shape shape, string color)
     {
         var properties = shape.ShapeProperties ??= new P.ShapeProperties();
         properties.RemoveAllChildren<A.SolidFill>();
         properties.RemoveAllChildren<A.NoFill>();
+        properties.RemoveAllChildren<A.GradientFill>();
         var fill = new A.SolidFill(new A.RgbColorModelHex { Val = color });
         if (properties.GetFirstChild<A.PresetGeometry>() is { } geometry)
         {
             geometry.InsertAfterSelf(fill);
+        }
+        else if (properties.GetFirstChild<A.CustomGeometry>() is { } custom)
+        {
+            custom.InsertAfterSelf(fill);
         }
         else
         {
@@ -413,21 +603,11 @@ internal static partial class StatusReportFiller
         }
     }
 
-    private static void SizeBar(P.Slide slide, P.Shape bar, string name, decimal share)
-    {
-        var track = slide.Descendants<P.Shape>()
-            .FirstOrDefault(shape => shape.NonVisualShapeProperties?.NonVisualDrawingProperties?.Name?.Value == $"{name}.trilho");
-        var width = track?.ShapeProperties?.Transform2D?.Extents?.Cx?.Value;
-        if (width is null || bar.ShapeProperties?.Transform2D?.Extents is not { } extents)
-        {
-            return;
-        }
-
-        extents.Cx = (long)Math.Round(width.Value * Math.Clamp(share, 0m, 1m), MidpointRounding.AwayFromZero);
-    }
-
-    /// <summary>The shape of a logo becomes the picture, fitted in it and centered, with the name as its description.</summary>
-    private static void Picture(SlidePart part, P.Shape shape, ReportPicture picture)
+    /// <summary>
+    /// The shape of a logo becomes the picture, as large as fits in it, aligned as its text and centered in its height,
+    /// with the text as its description. A logo in a frame (<c>.quadro</c>) takes the frame along, its width hugging it.
+    /// </summary>
+    private static void Picture(SlidePart part, OpenXmlElement root, P.Shape shape, string name, ReportPicture picture)
     {
         var properties = shape.NonVisualShapeProperties!.NonVisualDrawingProperties!;
         var transform = shape.ShapeProperties?.Transform2D;
@@ -436,26 +616,27 @@ internal static partial class StatusReportFiller
             return;
         }
 
+        var alignment = shape.Descendants<A.ParagraphProperties>().FirstOrDefault()?.Alignment?.Value;
         var (x, y, width, height) = Fit(
-            offset.X!.Value, offset.Y!.Value, extents.Cx!.Value, extents.Cy!.Value, ImageSize.Of(picture.Content, picture.ContentType));
-        var blip = new A.Blip();
-        if (picture.ContentType == "image/svg+xml")
+            offset.X!.Value,
+            offset.Y!.Value,
+            extents.Cx!.Value,
+            extents.Cy!.Value,
+            ImageSize.Of(picture.Content, picture.ContentType),
+            alignment == A.TextAlignmentTypeValues.Left ? -1 : alignment == A.TextAlignmentTypeValues.Right ? 1 : 0);
+        if (picture.Framed && ShapeNamed(root, StatusReportFields.FrameOf(name)) is { ShapeProperties.Transform2D: { Offset: { } frameOffset, Extents: { } frameExtents } })
         {
-            blip.Embed = Image(part, EmptyPng, ImagePartType.Png);
-            var svg = new OpenXmlUnknownElement("asvg", "svgBlip", SvgNamespace);
-            svg.SetAttribute(new OpenXmlAttribute(
-                "r", "embed", "http://schemas.openxmlformats.org/officeDocument/2006/relationships", Image(part, picture.Content, ImagePartType.Svg)));
-            blip.Append(new A.BlipExtensionList(new A.BlipExtension(svg) { Uri = SvgExtension }));
-        }
-        else
-        {
-            blip.Embed = Image(part, picture.Content, picture.ContentType == "image/png" ? ImagePartType.Png : ImagePartType.Jpeg);
+            var padding = (frameExtents.Cx!.Value - extents.Cx!.Value) / 2;
+            frameOffset.X = x - padding;
+            frameExtents.Cx = width + (2 * padding);
         }
 
-        var name = string.Concat(shape.Descendants<A.Text>().Select(text => text.Text));
+        var blip = new A.Blip();
+        Embed(part, blip, picture);
+        var description = string.Concat(shape.Descendants<A.Text>().Select(text => text.Text));
         var pictureShape = new P.Picture(
             new P.NonVisualPictureProperties(
-                new P.NonVisualDrawingProperties { Id = properties.Id, Name = properties.Name, Description = name },
+                new P.NonVisualDrawingProperties { Id = properties.Id, Name = properties.Name, Description = description },
                 new P.NonVisualPictureDrawingProperties(new A.PictureLocks { NoChangeAspect = true }),
                 new P.ApplicationNonVisualDrawingProperties()),
             new P.BlipFill(blip, new A.Stretch(new A.FillRectangle())),
@@ -477,8 +658,12 @@ internal static partial class StatusReportFiller
         return part.GetIdOfPart(image);
     }
 
-    /// <summary>The place of a picture of the size given inside a box, as large as fits, centered; the whole box without a size.</summary>
-    private static (long X, long Y, long Width, long Height) Fit(long x, long y, long width, long height, (double Width, double Height)? size)
+    /// <summary>
+    /// The place of a picture of the size given inside a box, as large as fits, centered in the height and to the left,
+    /// the center or the right (-1, 0, 1); the whole box without a size.
+    /// </summary>
+    private static (long X, long Y, long Width, long Height) Fit(
+        long x, long y, long width, long height, (double Width, double Height)? size, int alignment)
     {
         if (size is not { Width: > 0, Height: > 0 } image)
         {
@@ -486,29 +671,68 @@ internal static partial class StatusReportFiller
         }
 
         var scale = Math.Min(width / image.Width, height / image.Height);
-        var fitted = ((long)(image.Width * scale), (long)(image.Height * scale));
-        return (x + ((width - fitted.Item1) / 2), y + ((height - fitted.Item2) / 2), fitted.Item1, fitted.Item2);
+        var (fittedWidth, fittedHeight) = ((long)(image.Width * scale), (long)(image.Height * scale));
+        var left = alignment switch
+        {
+            < 0 => x,
+            > 0 => x + width - fittedWidth,
+            _ => x + ((width - fittedWidth) / 2),
+        };
+        return (left, y + ((height - fittedHeight) / 2), fittedWidth, fittedHeight);
     }
 
-    /// <summary>The values a slide reads: the field is looked for in each place, the innermost first.</summary>
+    /// <summary>A text that shrinks on overflow takes the scale of the font its lines need, because the PowerPoint only works it out on an edit.</summary>
+    private static void Scale(P.Shape shape)
+    {
+        var body = shape.TextBody?.BodyProperties;
+        if (body?.GetFirstChild<A.NormalAutoFit>() is not { } autoFit || shape.ShapeProperties?.Transform2D?.Extents is not { } extents)
+        {
+            return;
+        }
+
+        var width = (extents.Cx!.Value - (body.LeftInset?.Value ?? 91440) - (body.RightInset?.Value ?? 91440)) / (double)Emu;
+        var height = (extents.Cy!.Value - (body.TopInset?.Value ?? 45720) - (body.BottomInset?.Value ?? 45720)) / (double)Emu;
+        var paragraphs = shape.TextBody!.Elements<A.Paragraph>().Select(paragraph =>
+        {
+            var size = (paragraph.Elements<A.Run>().FirstOrDefault()?.RunProperties?.FontSize?.Value
+                ?? paragraph.GetFirstChild<A.EndParagraphRunProperties>()?.FontSize?.Value
+                ?? 1800) / 100.0;
+            var spacing = (paragraph.ParagraphProperties?.LineSpacing?.SpacingPercent?.Val?.Value ?? 100000) / 100000.0;
+            return (string.Concat(paragraph.Elements<A.Run>().Select(run => run.Text?.Text)).Length, size, spacing);
+        }).ToList();
+        var scale = FontScaleOf(paragraphs, width, height);
+        autoFit.FontScale = scale < 100000 ? scale : null;
+    }
+
+    private static string NameOf(P.Shape shape) => shape.NonVisualShapeProperties?.NonVisualDrawingProperties?.Name?.Value ?? string.Empty;
+
+    private static string NameOf(P.GroupShape group) =>
+        group.NonVisualGroupShapeProperties?.NonVisualDrawingProperties?.Name?.Value ?? string.Empty;
+
+    private static P.Shape? ShapeNamed(OpenXmlElement root, string name) =>
+        root.Descendants<P.Shape>().FirstOrDefault(shape => NameOf(shape) == name);
+
+    /// <summary>The values a slide reads: each value is looked for in each place, the innermost first.</summary>
     private sealed class Lookup(IReadOnlyList<ReportScope> scopes)
     {
         public Lookup With(ReportScope item) => new([item, .. scopes]);
 
-        public string? Field(string name) =>
-            scopes.Select(scope => scope.Fields.TryGetValue(name, out var value) ? value : null).FirstOrDefault(value => value is not null);
+        public string? Field(string name) => Find(scope => scope.Fields.GetValueOrDefault(name));
 
-        public IReadOnlyList<ReportScope> List(string name) =>
-            scopes.Select(scope => scope.Lists.TryGetValue(name, out var list) ? list : null).FirstOrDefault(list => list is not null) ?? [];
+        public IReadOnlyList<ReportScope> List(string name) => Find(scope => scope.Lists.GetValueOrDefault(name)) ?? [];
 
-        public ReportTone? Tone(string name) =>
-            scopes.Select(scope => scope.Tones.TryGetValue(name, out var tone) ? tone : (ReportTone?)null).FirstOrDefault(tone => tone is not null);
+        public ReportTag? Tag(string name) => Find(scope => scope.Tags.GetValueOrDefault(name));
 
-        public decimal? Bar(string name) =>
-            scopes.Select(scope => scope.Bars.TryGetValue(name, out var share) ? share : (decimal?)null).FirstOrDefault(share => share is not null);
+        public ReportBar? Bar(string name) => Find(scope => scope.Bars.GetValueOrDefault(name));
 
-        public ReportPicture? Picture(string name) =>
-            scopes.Select(scope => scope.Pictures.TryGetValue(name, out var picture) ? picture : null).FirstOrDefault(picture => picture is not null);
+        public decimal? Mark(string name) =>
+            scopes.Select(scope => scope.Marks.TryGetValue(name, out var share) ? share : (decimal?)null).FirstOrDefault(share => share is not null);
+
+        public ReportPicture? Picture(string name) => Find(scope => scope.Pictures.GetValueOrDefault(name));
+
+        private T? Find<T>(Func<ReportScope, T?> value)
+            where T : class =>
+            scopes.Select(value).FirstOrDefault(found => found is not null);
     }
 }
 

@@ -12,6 +12,9 @@
   <ItemGroup>
     <EmbeddedResource Include="Infrastructure/StatusReports/pt-BR.json" LogicalName="GerenWare.Projects.StatusReports.pt-BR.json" />
     <EmbeddedResource Include="../../../../web/src/theme/tokens.json" LogicalName="GerenWare.Projects.StatusReports.tokens.json" Link="Infrastructure/StatusReports/tokens.json" />
+    <EmbeddedResource Include="Infrastructure/StatusReports/Icons/*.svg" LogicalName="GerenWare.Projects.StatusReports.Icons.%(Filename).svg" />
+    <EmbeddedResource Include="../../../../docs/marca/svg/gerenware-horizontal-fundo-escuro.svg" LogicalName="GerenWare.Projects.StatusReports.gerenware-dark.svg" Link="Infrastructure/StatusReports/gerenware-dark.svg" />
+    <EmbeddedResource Include="../../../../docs/marca/png/gerenware-horizontal-fundo-escuro-256px.png" LogicalName="GerenWare.Projects.StatusReports.gerenware-dark.png" Link="Infrastructure/StatusReports/gerenware-dark.png" />
   </ItemGroup>
 
   <ItemGroup>

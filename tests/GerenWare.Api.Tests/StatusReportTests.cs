@@ -262,8 +262,9 @@ public sealed class StatusReportTests(SqlServerFixture sqlServer)
         item.GetProperty("updated").GetProperty("name").GetString().Should().Be("Marina Costa");
         var slides = await SlidesOfAsync(scene.Marina, scene, report);
         slides.Should().HaveCount(3);
-        slides[0].Should().Contain("ERP-FIN · Implantação do ERP financeiro").And.Contain("Cadastros validados").And.Contain("Marina Costa");
-        slides[1].Should().Contain("Testes").And.Contain("Homologação");
+        slides[0].Should().Contain("Implantação do ERP financeiro").And.Contain("ERP-FIN").And.Contain("Cadastros validados").And.Contain("Marina Costa");
+        slides[0].Should().Contain("Próximos marcos").And.Contain("Homologação");
+        slides[1].Should().Contain("Testes");
     }
 
     [Fact(DisplayName = "Relatório gerado de novo no mesmo dia")]

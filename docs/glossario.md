@@ -124,6 +124,10 @@ Termos do negócio, como aparecem nas specs e na interface, e o nome usado no c�
 | Ponto de atenção | Attention | O texto de cada risco no relatório, até 500 caracteres (ADR-0165) |
 | Pasta dos relatórios | IsStatusReport | A pasta padrão "Relatórios de status", onde cada relatório gerado fica; nunca é desativada (ADR-0165) |
 | Mostrar horas | ShowHours, IProjectReportHours | A opção do relatório com os totais das horas do projeto e das tarefas, nunca as horas de cada pessoa (ADR-0166) |
+| Bloco (do modelo do relatório) | Block, `lista.{nome}` | O grupo de formas de um item de uma lista no modelo, repetido para cada item, para baixo ou para o lado (ADR-0168) |
+| Barra e marca (do modelo do relatório) | ReportBar, `barra.{nome}`, `marca.{nome}` | A barra toma a parte do trilho que o valor dá; a marca vai ao ponto do previsto no trilho, ou sai sem ele (ADR-0168) |
+| Etiqueta (do modelo do relatório) | ReportTag, `etiqueta.{nome}` | A forma com o tom e o ícone de um status, na paleta clara ou escura pelo fundo em que está (ADR-0168) |
+| Sequência das fases | StatusReportPhases.SequenceOf | Até 5 fases da primeira em aberto em diante, na faixa do fim previsto do primeiro slide do relatório (ADR-0168) |
 | Projeção do atraso | ScheduleProjection, `projection` | O que uma tarefa atrasada empurra se o que falta seguir o ritmo planejado a partir de hoje: o novo fim, os marcos e o fim do projeto, sem gravar nada (ADR-0164) |
 | Tipo da dependência | ScheduleLinkType | "Termina, então começa" (FinishToStart), "Começa junto" (StartToStart) e "Termina junto" (FinishToFinish) (ADR-0137) |
 | Intervalo da dependência | Lag | Dias úteis de espera (positivo) ou de adiantamento (negativo), de -99 a 999 (ADR-0137) |

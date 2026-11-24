@@ -1,22 +1,19 @@
-using System.Text;
-using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Validation;
 using GerenWare.Projects.Application;
 using GerenWare.Projects.Contracts;
 using GerenWare.Projects.Domain;
 using GerenWare.Projects.Infrastructure.StatusReports;
-using A = DocumentFormat.OpenXml.Drawing;
+using static GerenWare.Projects.Tests.StatusReportSamples;
 using P = DocumentFormat.OpenXml.Presentation;
 
 namespace GerenWare.Projects.Tests;
 
 // Spec: relatorio-de-status, requirements "Rascunho do relatório", "Textos e riscos do relatório", "O que vem do
-// sistema", "Riscos no relatório", "Horas no relatório", "Modelo padrão do relatório", "Campos do modelo" and
-// "Relatório em PDF" (module side).
+// sistema", "Riscos no relatório", "Horas no relatório", "Modelo padrão do relatório" and "Relatório em PDF" (module
+// side); the template and its fields are in StatusReportTemplateTests.
 public sealed class StatusReportTests
 {
     private static readonly HashSet<int> OpenTickets = [539, 541, 545];
-    private static readonly DateOnly Today = new(2026, 11, 20);
 
     private static (StatusReportForm? Form, IReadOnlyList<StatusReportField> Invalid) FormOf(
         string summary = "Cadastros validados", IReadOnlyList<StatusReportRiskInput>? risks = null) =>
@@ -127,14 +124,38 @@ public sealed class StatusReportTests
         StatusReportSuggestions.Of(notes, new HashSet<int> { 539 }, []).Should().BeEmpty();
     }
 
+    [Fact(DisplayName = "Sequência das fases")]
+    public void Sequence_StartsAtTheFirstPhaseNotDone_UpToFive()
+    {
+        int[] progress = [100, 100, 40, 0, 0, 0, 0];
+
+        StatusReportPhases.SequenceOf([.. Enumerable.Range(0, 7)], index => progress[index] == 100).Should().Equal(2, 3, 4, 5, 6);
+    }
+
+    [Fact]
+    public void Sequence_CompletesWithThePhasesBefore_AndShowsTheLastOnesWhenAllAreDone()
+    {
+        List<int> phases = [.. Enumerable.Range(0, 7)];
+
+        StatusReportPhases.SequenceOf(phases, index => index < 5).Should().Equal(2, 3, 4, 5, 6);
+        StatusReportPhases.SequenceOf(phases, _ => true).Should().Equal(2, 3, 4, 5, 6);
+        StatusReportPhases.SequenceOf([0, 1, 2], _ => false).Should().Equal(0, 1, 2);
+        StatusReportPhases.SequenceOf(new List<int>(), _ => false).Should().BeEmpty();
+    }
+
     [Fact(DisplayName = "Relatório abre sem reparo")]
     public void Report_PassesTheValidator_WithTheSlidesInTheOrderOfTheTemplate()
     {
         using var document = Render(Data() with { Risks = [Risk(539), Risk(541)], Hours = Hours(200m) });
 
         new OpenXmlValidator().Validate(document, TestContext.Current.CancellationToken).Should().BeEmpty();
-        TitlesOf(document).Should().Equal("Status do projeto", "Cronograma", "Próximos passos", "Risco", "Risco", "Horas do projeto");
+        NamesOf(document).Should().Equal("Status do projeto", "Cronograma", "Próximos passos", "Risco", "Risco", "Horas do projeto");
         document.PresentationPart!.Presentation!.SlideSize!.Cx!.Value.Should().Be(12192000);
+        foreach (var slide in Slides(document))
+        {
+            slide.Descendants<P.NonVisualDrawingProperties>().Select(properties => properties.Id!.Value)
+                .Should().OnlyHaveUniqueItems("the copies of the blocks take ids of their own");
+        }
     }
 
     [Fact(DisplayName = "Relatório sem riscos")]
@@ -143,7 +164,7 @@ public sealed class StatusReportTests
         using var document = Render(Data());
 
         new OpenXmlValidator().Validate(document, TestContext.Current.CancellationToken).Should().BeEmpty();
-        TitlesOf(document).Should().Equal("Status do projeto", "Cronograma", "Próximos passos");
+        NamesOf(document).Should().Equal("Status do projeto", "Cronograma", "Próximos passos");
     }
 
     [Fact(DisplayName = "Risco com chamado no fornecedor")]
@@ -151,14 +172,24 @@ public sealed class StatusReportTests
     {
         using var document = Render(Data() with { Risks = [Risk(539)] });
 
-        var text = TextOf(Slides(document)[3]);
-        text.Should().Contain("#539 · Rejeição 539 na emissão").And.Contain("Em andamento · prazo vencido").And.Contain("Alta");
+        var slide = Slides(document)[3];
+        var text = TextOf(slide);
+        text.Should().Contain("Risco 1 de 1").And.Contain("#539 · Rejeição 539 na emissão").And.Contain("Em andamento · prazo vencido");
         text.Should().Contain("Classificação: Alta").And.Contain("Depende do retorno do fornecedor");
-        text.Should().Contain("Fornecedor Fictício · 77812 · Em análise").And.Contain("Homologação").And.Contain("04/12/2026");
-        var tag = ShapeNamed(Slides(document)[3], "risco.classificacao");
-        tag.ShapeProperties!.GetFirstChild<A.SolidFill>()!.RgbColorModelHex!.Val!.Value.Should().Be(StatusReportFiller.ColorsOf(ReportTone.Danger).Background);
-        ShapeNamed(Slides(document)[3], "risco.classificacao.icone").ShapeProperties!.GetFirstChild<A.PresetGeometry>()!.Preset!.Value
-            .Should().Be(A.ShapeTypeValues.Triangle);
+        text.Should().Contain("Fornecedor Fictício · 77812 · Em análise").And.Contain("Homologação").And.Contain("04/12").And.Contain("em 10 dias úteis");
+        FillOf(ShapeNamed(slide, "etiqueta.classificacao")).Should().Be("FCE4E4");
+        FillOf(ShapeNamed(slide, "etiqueta.status")).Should().Be("E3F2FB");
+        FillOf(ShapeNamed(slide, "etiqueta.prioridade")).Should().Be("FDF1DC");
+        SvgOf(PictureNamed(slide, "etiqueta.classificacao.icone")).Should().Contain("#A12222");
+    }
+
+    [Fact]
+    public void RiskSlides_CountTheRisks()
+    {
+        using var document = Render(Data() with { Risks = [Risk(539), Risk(541)] });
+
+        TextOf(Slides(document)[3]).Should().Contain("Risco 1 de 2").And.Contain("#539");
+        TextOf(Slides(document)[4]).Should().Contain("Risco 2 de 2").And.Contain("#541");
     }
 
     [Fact(DisplayName = "Relatório sem horas")]
@@ -166,18 +197,23 @@ public sealed class StatusReportTests
     {
         using var document = Render(Data() with { Hours = null });
 
-        TitlesOf(document).Should().NotContain("Horas do projeto");
+        NamesOf(document).Should().NotContain("Horas do projeto");
         string.Concat(Slides(document).Select(TextOf)).Should().NotContain("Contratadas").And.NotContain("h apontadas");
     }
 
     [Fact(DisplayName = "Relatório com horas")]
-    public void ReportWithHours_ShowsTheTotals_AndTheHoursOfTheTasks()
+    public void ReportWithHours_ShowsTheTotals_TheConsumption_AndTheHoursOfTheTasks()
     {
         using var document = Render(Data() with { Hours = Hours(200m) });
 
-        var text = TextOf(Slides(document).Last());
+        var slide = Slides(document).Last();
+        var text = TextOf(slide);
         text.Should().Contain("200 h").And.Contain("20 h").And.Contain("180 h").And.Contain("40 h").And.Contain("Dentro das horas");
+        text.Should().Contain("180 de 220 h · 82%");
         text.Should().Contain("Configurar plano de contas").And.Contain("32 h").And.Contain("6 h apontadas fora das tarefas do cronograma");
+        FillOf(ShapeNamed(slide, "etiqueta.horas")).Should().Be("E3F5EC");
+        var track = BoxOf(ShapeNamed(slide, "barra.horas.trilho")).Width;
+        ((double)BoxOf(ShapeNamed(slide, "barra.horas")).Width / track).Should().BeApproximately(180 / 220.0, 0.001);
     }
 
     [Fact(DisplayName = "Projeto sem horas contratadas")]
@@ -185,10 +221,10 @@ public sealed class StatusReportTests
     {
         using var document = Render(Data() with { Hours = Hours(null) });
 
-        var text = TextOf(Slides(document).Last());
-        text.Should().Contain("Sem horas contratadas").And.Contain("180 h");
-        ShapeNamed(Slides(document).Last(), "horas.situacao").ShapeProperties!.GetFirstChild<A.SolidFill>()!.RgbColorModelHex!.Val!.Value
-            .Should().Be(StatusReportFiller.ColorsOf(ReportTone.Neutral).Background);
+        var slide = Slides(document).Last();
+        TextOf(slide).Should().Contain("Sem horas contratadas").And.Contain("180 h apontadas, sem horas contratadas");
+        FillOf(ShapeNamed(slide, "etiqueta.horas")).Should().Be("EFF1F4");
+        HasShape(slide, "barra.horas").Should().BeFalse("without contracted hours there is nothing to consume");
     }
 
     [Fact]
@@ -198,9 +234,25 @@ public sealed class StatusReportTests
 
         using var document = Render(Data() with { Hours = Hours(200m) with { Tasks = tasks } });
 
-        var table = Slides(document).Last().Descendants<A.Table>().Single();
-        table.Elements<A.TableRow>().Should().HaveCount(16);
+        Blocks(Slides(document).Last(), "lista.horasTarefa").Should().HaveCount(15);
         TextOf(Slides(document).Last()).Should().Contain("e mais 3 tarefas, com 30 h previstas e 13,5 h apontadas");
+    }
+
+    [Fact]
+    public void TaskAboveItsPlannedHours_HasItsBarInTheToneOfDanger()
+    {
+        List<ReportTaskHours> tasks =
+        [
+            new(Guid.CreateVersion7(), "Levantar processos", 40m, 46m),
+            new(Guid.CreateVersion7(), "Configurar plano de contas", 60m, 30m),
+        ];
+
+        using var document = Render(Data() with { Hours = Hours(200m) with { Tasks = tasks } });
+
+        var blocks = Blocks(Slides(document).Last(), "lista.horasTarefa");
+        FillOf(ShapeNamed(blocks[0], "barra.horasTarefa")).Should().Be("B42318");
+        BoxOf(ShapeNamed(blocks[0], "barra.horasTarefa")).Width.Should().Be(BoxOf(ShapeNamed(blocks[0], "barra.horasTarefa.trilho")).Width);
+        FillOf(ShapeNamed(blocks[1], "barra.horasTarefa")).Should().Be("047857");
     }
 
     [Fact(DisplayName = "Andamento da fase contra o previsto")]
@@ -208,31 +260,21 @@ public sealed class StatusReportTests
     {
         using var document = Render(Data());
 
-        var phases = Slides(document)[1].Descendants<P.GraphicFrame>()
-            .Single(frame => frame.NonVisualGraphicFrameProperties!.NonVisualDrawingProperties!.Name == "fases");
-        var rows = phases.Descendants<A.TableRow>().Select(row => row.Elements<A.TableCell>().Select(cell => cell.InnerText).ToList()).ToList();
-        rows.Skip(1).First().Should().Equal("Configuração", "13/10/2026 a 30/10/2026", "30%", "50%");
-    }
-
-    [Fact(DisplayName = "Lista numa tabela")]
-    public void ListInATable_RepeatsTheModelRowForEachItem()
-    {
-        using var document = Render(Data());
-
-        var phases = Slides(document)[1].Descendants<P.GraphicFrame>()
-            .Single(frame => frame.NonVisualGraphicFrameProperties!.NonVisualDrawingProperties!.Name == "fases");
-        phases.Descendants<A.TableRow>().Should().HaveCount(5, "the titles and one row for each of the four phases");
-        TextOf(Slides(document)[1]).Should().NotContain("{{");
+        var block = Blocks(Slides(document)[1], "lista.fase")[0];
+        TextOf(block).Should().Contain("Configuração").And.Contain("13/10/2026 a 30/10/2026").And.Contain("30%");
+        var track = BoxOf(ShapeNamed(block, "barra.fase.trilho"));
+        var mark = BoxOf(ShapeNamed(block, "marca.fase"));
+        ((mark.X + (mark.Width / 2.0) - track.X) / track.Width).Should().BeApproximately(0.5, 0.001);
     }
 
     [Fact(DisplayName = "Lista vazia")]
-    public void EmptyList_TakesTheTableOut_AndSaysSo()
+    public void EmptyList_TakesTheBlockOut_AndSaysSo()
     {
         using var document = Render(Data() with { LateTasks = new StatusReportList<StatusReportLateTask>([], 0) });
 
-        Slides(document)[1].Descendants<P.GraphicFrame>()
-            .Should().NotContain(frame => frame.NonVisualGraphicFrameProperties!.NonVisualDrawingProperties!.Name == "atrasos");
+        Blocks(Slides(document)[1], "lista.atraso").Should().BeEmpty();
         TextOf(Slides(document)[1]).Should().Contain("Nenhuma tarefa atrasada.");
+        FillOf(ShapeNamed(Slides(document)[1], "etiqueta.atrasos")).Should().Be("E3F5EC");
     }
 
     [Fact(DisplayName = "Tarefas atrasadas além do limite")]
@@ -241,9 +283,10 @@ public sealed class StatusReportTests
         using var document = Render(Data());
 
         var text = TextOf(Slides(document)[1]);
-        text.Should().Contain("Integrar emissão de NF-e").And.Contain("3 dias úteis")
-            .And.Contain("o marco Homologação em 2 dias úteis e mais 1 marco").And.Contain("e mais 2 tarefas atrasadas");
+        text.Should().Contain("Integrar emissão de NF-e").And.Contain("3 dias úteis de atraso")
+            .And.Contain("Empurra o marco Homologação em 2 dias úteis e mais 1 marco").And.Contain("e mais 2 tarefas atrasadas");
         text.Should().Contain("Devia ter começado em 16/11");
+        ShapeNamed(Slides(document)[1], "etiqueta.atrasos").InnerText.Should().Be("4");
     }
 
     [Fact(DisplayName = "Projeto sem cronograma")]
@@ -254,115 +297,18 @@ public sealed class StatusReportTests
             Progress = null,
             Deadline = null,
             Phases = new StatusReportList<StatusReportPhase>([], 0),
+            Sequence = [],
             Milestones = [],
             LateTasks = new StatusReportList<StatusReportLateTask>([], 0),
         });
 
         new OpenXmlValidator().Validate(document, TestContext.Current.CancellationToken).Should().BeEmpty();
-        TextOf(Slides(document)[0]).Should().Contain("Sem cronograma");
-        TextOf(Slides(document)[1]).Should().Contain("Sem cronograma.").And.Contain("Nenhum marco em aberto.");
-    }
-
-    [Fact(DisplayName = "Cores da instalação no relatório")]
-    public void InstallationColor_IsTheMainColorOfTheTheme()
-    {
-        using var document = Render(Data() with { Brand = Data().Brand with { MainColor = "#0F766E" } });
-
-        var theme = document.PresentationPart!.SlideMasterParts.Single().ThemePart!.Theme!;
-        theme.ThemeElements!.ColorScheme!.Accent1Color!.RgbColorModelHex!.Val!.Value.Should().Be("0F766E");
-        using var standard = Render(Data());
-        standard.PresentationPart!.SlideMasterParts.Single().ThemePart!.Theme!.ThemeElements!.ColorScheme!.Accent1Color!.RgbColorModelHex!.Val!.Value
-            .Should().Be("047857");
-    }
-
-    [Fact(DisplayName = "Instalação e cliente sem logo")]
-    public void WithoutLogos_TheNamesAreWritten()
-    {
-        using var document = Render(Data());
-
         var first = Slides(document)[0];
-        ShapeNamed(first, "logo.instalacao").InnerText.Should().Be("Consultoria Fictícia");
-        ShapeNamed(first, "logo.cliente").InnerText.Should().Be("Distribuidora Exemplo");
-        first.Descendants<P.Picture>().Should().BeEmpty();
-    }
-
-    [Fact]
-    public void Logos_BecomePicturesFittedInTheirShapes_AlsoAnSvg()
-    {
-        var svg = Encoding.UTF8.GetBytes("""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 100"><rect width="400" height="100"/></svg>""");
-        var data = Data() with
-        {
-            Brand = Data().Brand with { Logo = new StatusReportImage(svg, "image/svg+xml") },
-            ClientLogo = new StatusReportImage(Png(200, 100), "image/png"),
-        };
-
-        using var document = Render(data);
-
-        new OpenXmlValidator().Validate(document, TestContext.Current.CancellationToken).Should().BeEmpty();
-        var pictures = Slides(document)[0].Descendants<P.Picture>().ToList();
-        pictures.Should().HaveCount(2);
-        var client = pictures.Single(picture => picture.NonVisualPictureProperties!.NonVisualDrawingProperties!.Name == "logo.cliente");
-        client.NonVisualPictureProperties!.NonVisualDrawingProperties!.Description!.Value.Should().Be("Distribuidora Exemplo");
-        var size = client.ShapeProperties!.Transform2D!.Extents!;
-        (size.Cx!.Value / (double)size.Cy!.Value).Should().BeApproximately(2.0, 0.01);
-        var installation = pictures.Single(picture => picture.NonVisualPictureProperties!.NonVisualDrawingProperties!.Name == "logo.instalacao");
-        installation.BlipFill!.Blip!.OuterXml.Should().Contain("svgBlip");
-    }
-
-    [Fact(DisplayName = "Campo quebrado em pedaços")]
-    public void FieldKeptInPieces_TakesTheValue_WithTheFormatOfWhereItStarts()
-    {
-        var template = DefaultStatusReportTemplate.Build(null, null);
-        using (var stream = new MemoryStream())
-        {
-            stream.Write(template);
-            using (var document = PresentationDocument.Open(stream, true))
-            {
-                var slide = Slides(document)[2];
-                var paragraph = ShapeNamed(slide, "{{texto.foco}}").Descendants<A.Paragraph>().Single();
-                var run = paragraph.Elements<A.Run>().Single();
-                foreach (var (text, bold) in new[] { ("{{proj", true), ("eto.no", false), ("me}}", false) })
-                {
-                    var piece = (A.Run)run.CloneNode(true);
-                    piece.RunProperties!.Bold = bold;
-                    piece.Text!.Text = text;
-                    run.InsertBeforeSelf(piece);
-                }
-
-                run.Remove();
-                slide.Save();
-            }
-
-            template = stream.ToArray();
-        }
-
-        using var filled = Open(StatusReportFiller.Fill(template, PptxStatusReportRenderer.ValuesOf(Data())));
-
-        var runs = ShapeNamed(Slides(filled)[2], "{{texto.foco}}").Descendants<A.Run>().ToList();
-        runs.Should().ContainSingle();
-        (runs[0].Text!.Text, runs[0].RunProperties!.Bold!.Value).Should().Be(("Implantação do ERP financeiro", true));
-    }
-
-    [Fact]
-    public void LineBreaksOfAText_BecomeParagraphs()
-    {
-        using var document = Render(Data() with
-        {
-            Texts = new StatusReportTexts("Primeira linha\nSegunda linha", string.Empty, string.Empty, string.Empty),
-        });
-
-        ShapeNamed(Slides(document)[0], "{{texto.resumo}}").Descendants<A.Paragraph>().Select(paragraph => paragraph.InnerText)
-            .Should().Equal("Primeira linha", "Segunda linha");
-    }
-
-    [Fact]
-    public void ProgressBar_IsAsWideAsTheShareOfItsTrack()
-    {
-        using var document = Render(Data());
-
-        var track = ShapeNamed(Slides(document)[0], "barra.andamento.trilho").ShapeProperties!.Transform2D!.Extents!.Cx!.Value;
-        var bar = ShapeNamed(Slides(document)[0], "barra.andamento").ShapeProperties!.Transform2D!.Extents!.Cx!.Value;
-        ((double)bar / track).Should().BeApproximately(0.62, 0.001);
+        TextOf(first).Should().Contain("Sem cronograma").And.Contain("Nenhum marco em aberto.");
+        Blocks(first, "lista.etapa.lado").Should().BeEmpty();
+        HasShape(first, "marca.andamento").Should().BeFalse();
+        HasShape(first, "etiqueta.proximoMarco").Should().BeFalse("a tag left without text leaves");
+        TextOf(Slides(document)[1]).Should().Contain("Sem cronograma.");
     }
 
     [Fact]
@@ -371,11 +317,32 @@ public sealed class StatusReportTests
         using var document = Render(Data());
 
         var text = TextOf(Slides(document)[0]);
-        text.Should().Contain("ERP-FIN · Implantação do ERP financeiro").And.Contain("Em andamento").And.Contain("Marina Costa");
-        text.Should().Contain("20/11/2026").And.Contain("62%").And.Contain("Previsto para hoje: 70%");
-        text.Should().Contain("2 dias úteis depois da linha de base (02/12/2026)").And.Contain("Homologação");
-        text.Should().Contain("04/12/2026 · em 10 dias úteis").And.Contain("1 vencido").And.Contain("Cadastros validados");
-        text.Should().NotContain("{{");
+        text.Should().Contain("Relatório de status · 20 de novembro de 2026").And.Contain("Implantação do ERP financeiro");
+        text.Should().Contain("ERP-FIN").And.Contain("Gerente: Marina Costa").And.Contain("Cliente: Distribuidora Exemplo").And.Contain("Em andamento");
+        text.Should().Contain("62%").And.Contain("previsto 70%").And.Contain("04/12/2026").And.Contain("2 dias úteis depois da linha de base");
+        text.Should().Contain("linha de base: 02/12/2026").And.Contain("04/12 · em 10 dias úteis").And.Contain("1 vencido").And.Contain("Cadastros validados");
+        TextOf(Slides(document)[0]).Should().NotContain("{{");
+        string.Concat(Slides(document).Select(TextOf)).Should().NotContain("{{");
+    }
+
+    [Fact]
+    public void StatusSlide_ShowsTheSequenceOfThePhases_InTheirTones()
+    {
+        List<StatusReportPhase> phases =
+        [
+            .. Enumerable.Range(1, 7).Select(index => new StatusReportPhase(
+                $"Fase {index}", new DateOnly(2026, 10, index), new DateOnly(2026, 10, index + 10), index <= 2 ? 100 : index == 3 ? 40 : 0, null)),
+        ];
+
+        using var document = Render(Data() with { Sequence = StatusReportPhases.SequenceOf(phases, phase => phase.Progress >= 100) });
+
+        var blocks = Blocks(Slides(document)[0], "lista.etapa.lado");
+        blocks.Select(block => ShapeNamed(block, "{{etapa.nome}}").InnerText).Should().Equal("Fase 3", "Fase 4", "Fase 5", "Fase 6", "Fase 7");
+        TextOf(blocks[0]).Should().Contain("03/10 a 13/10").And.Contain("40%");
+        blocks.Select(block => OffsetOf(block).Y).Distinct().Should().ContainSingle("the sequence goes to the side");
+        (OffsetOf(blocks[1]).X - OffsetOf(blocks[0]).X).Should().Be(blocks[0].GroupShapeProperties!.TransformGroup!.Extents!.Cx!.Value);
+        FillOf(ShapeNamed(blocks[0], "barra.etapa")).Should().Be("7DD3FC", "in progress, in information, over the dark band");
+        HasShape(blocks[1], "barra.etapa").Should().BeFalse("a phase not started has no bar");
     }
 
     [Fact]
@@ -385,99 +352,5 @@ public sealed class StatusReportTests
 
         renderer.FileNameOf("ERP-FIN", Today, StatusReportFormat.PowerPoint).Should().Be("ERP-FIN - Relatório de status - 2026-11-20.pptx");
         renderer.FileNameOf("ERP-FIN", Today, StatusReportFormat.Pdf).Should().Be("ERP-FIN - Relatório de status - 2026-11-20.pdf");
-    }
-
-    private static PresentationDocument Render(StatusReportData data) =>
-        Open(new PptxStatusReportRenderer().RenderAsync(data, TestContext.Current.CancellationToken).GetAwaiter().GetResult());
-
-    private static PresentationDocument Open(byte[] content) => PresentationDocument.Open(new MemoryStream(content), false);
-
-    private static List<P.Slide> Slides(PresentationDocument document)
-    {
-        var presentation = document.PresentationPart!;
-        return [.. presentation.Presentation!.SlideIdList!.Elements<P.SlideId>()
-            .Select(id => ((SlidePart)presentation.GetPartById(id.RelationshipId!)).Slide!)];
-    }
-
-    private static List<string> TitlesOf(PresentationDocument document) =>
-        [.. Slides(document).Select(slide => ShapeNamed(slide, "Título").InnerText)];
-
-    private static P.Shape ShapeNamed(P.Slide slide, string name) =>
-        slide.Descendants<P.Shape>().First(shape => shape.NonVisualShapeProperties!.NonVisualDrawingProperties!.Name == name);
-
-    private static string TextOf(P.Slide slide) =>
-        string.Join("\n", slide.Descendants<A.Paragraph>().Select(paragraph => paragraph.InnerText));
-
-    private static byte[] Png(int width, int height)
-    {
-        var png = new byte[24];
-        new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A }.CopyTo(png, 0);
-        System.Buffers.Binary.BinaryPrimitives.WriteUInt32BigEndian(png.AsSpan(16), (uint)width);
-        System.Buffers.Binary.BinaryPrimitives.WriteUInt32BigEndian(png.AsSpan(20), (uint)height);
-        return png;
-    }
-
-    private static StatusReportRiskItem Risk(int number) => new(
-        number,
-        $"Rejeição {number} na emissão",
-        ReportTicketStatus.InProgress,
-        ReportTicketPriority.High,
-        true,
-        new ReportVendorTicket("Fornecedor Fictício", "77812", ReportVendorStatus.InAnalysis),
-        RiskLevel.High,
-        "Depende do retorno do fornecedor",
-        [new StatusReportMilestone("Homologação", new DateOnly(2026, 12, 4), 10, null)],
-        0);
-
-    private static ReportHours Hours(decimal? contracted) => new(
-        contracted,
-        contracted is null ? 0m : 20m,
-        180m,
-        contracted is null ? null : 40m,
-        contracted is null ? ReportHoursState.NoContract : ReportHoursState.Within,
-        [new ReportTaskHours(Guid.CreateVersion7(), "Configurar plano de contas", 40m, 32m)],
-        6m);
-
-    private static StatusReportData Data()
-    {
-        var projection = new ScheduleProjection(
-            Guid.CreateVersion7(),
-            new DateOnly(2026, 11, 20),
-            new DateOnly(2026, 11, 25),
-            3,
-            [
-                new ProjectedMilestone(Guid.CreateVersion7(), "Homologação", new DateOnly(2026, 12, 4), new DateOnly(2026, 12, 8), 2),
-                new ProjectedMilestone(Guid.CreateVersion7(), "Go-live", new DateOnly(2026, 12, 11), new DateOnly(2026, 12, 15), 2),
-            ],
-            null);
-        return new StatusReportData(
-            Today,
-            new StatusReportBrand("Consultoria Fictícia", null, null, null),
-            "ERP-FIN",
-            "Implantação do ERP financeiro",
-            ProjectStatus.InProgress,
-            "Distribuidora Exemplo",
-            null,
-            ["Marina Costa"],
-            new OverviewProgress(62, 70, true),
-            new OverviewDeadline(new DateOnly(2026, 12, 4), new DateOnly(2026, 12, 2), 2),
-            new StatusReportList<StatusReportPhase>(
-            [
-                new("Configuração", new DateOnly(2026, 10, 13), new DateOnly(2026, 10, 30), 30, 50),
-                new("Integrações", new DateOnly(2026, 11, 2), new DateOnly(2026, 11, 20), 40, 60),
-                new("Testes", new DateOnly(2026, 11, 23), new DateOnly(2026, 12, 4), 0, 0),
-                new("Implantação", new DateOnly(2026, 12, 7), new DateOnly(2026, 12, 11), 0, null),
-            ], 0),
-            [new StatusReportMilestone("Homologação", new DateOnly(2026, 12, 4), 10, null)],
-            new StatusReportList<StatusReportLateTask>(
-            [
-                new("Integrar emissão de NF-e", new DateOnly(2026, 11, 2), new DateOnly(2026, 11, 17), 3, false, projection),
-                new("Treinar usuários-chave", new DateOnly(2026, 11, 16), new DateOnly(2026, 11, 27), 0, true, null),
-            ], 2),
-            7,
-            1,
-            new StatusReportTexts("Cadastros validados", "Implantação do ERP financeiro", "Homologar", "Aprovar o roteiro"),
-            [],
-            null);
     }
 }
